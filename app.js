@@ -489,6 +489,17 @@ const App = {
 
   /** Fluxo de inicialização do jogo (pós-login) */
   async bootGame() {
+    // Validação rígida de segurança: verifica o token com a API do Supabase
+    if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+      const { data: { user }, error } = await supabaseClient.auth.getUser();
+      if (error || !user) {
+        console.warn('[Security] Tentativa de bootGame sem autenticação válida na nuvem bloqueada!');
+        this.showAuthScreen();
+        return; // CURTO-CIRCUITO: Impede o jogo de iniciar na sessão fantasma
+      }
+      SupabaseAuth.currentUser = user;
+    }
+
     await this.loadState();        // Carrega do cloud (ou LocalStorage como fallback)
     this.setupEventListeners();
     this.checkResets();
@@ -919,7 +930,9 @@ const App = {
 
       let minutes = 25;
       if (mode === 'focus') {
-        minutes = 25;
+        // Lê os minutos personalizados do input se disponível
+        const customInput = document.getElementById('custom-minutes');
+        minutes = customInput ? parseInt(customInput.value) || 25 : 25;
         modeBtnFocus.classList.add('primary');
         document.getElementById('timer-mode-label').textContent = "Foco ativo";
         document.getElementById('timer-progress').classList.remove('break-mode');
@@ -945,7 +958,18 @@ const App = {
   startTimer() {
     AudioSynth.playClick();
 
-    // Caso seja modo personalizado de foco
+    // Se estiver em modo de foco e não rodando, garante carregar o tempo personalizado do input
+    if (this.timer.mode === 'focus' && !this.timer.intervalId) {
+      const customMin = parseInt(document.getElementById('custom-minutes').value) || 25;
+      this.timer.duration = customMin * 60;
+      // Só sobrescreve timeLeft se o timer não foi iniciado/despausado (estava no início)
+      if (this.timer.timeLeft === this.timer.duration || this.timer.timeLeft === 1500) {
+        this.timer.timeLeft = this.timer.duration;
+      }
+      this.timer.isCustom = true;
+    }
+
+    // Caso seja modo personalizado de foco vindo de estado ocioso
     if (this.timer.mode === 'idle') {
       const customMin = parseInt(document.getElementById('custom-minutes').value) || 25;
       this.timer.mode = 'focus';
@@ -1848,6 +1872,14 @@ const App = {
     document.getElementById('char-xp-ratio').textContent = `${char.xp} / ${xpNeeded} XP`;
     document.getElementById('char-xp-fill').style.width = `${xpPercent}%`;
 
+    // Atualiza Aba Infos (Conta)
+    const emailEl = document.getElementById('info-email');
+    if (emailEl) emailEl.textContent = SupabaseAuth.currentUser ? SupabaseAuth.currentUser.email : 'Sessão Offline';
+    const xpExactEl = document.getElementById('info-xp-exact');
+    if (xpExactEl) xpExactEl.textContent = `${char.xp} / ${xpNeeded}`;
+    const totalFocusEl = document.getElementById('info-total-focus');
+    if (totalFocusEl) totalFocusEl.textContent = `${Math.floor(this.state.analytics?.totalFocusMinutes || 0)} min`;
+
     // Atributos eficientes exibidos na interface (Base + Bonus)
     document.getElementById('stat-foc').textContent = stats.foc;
     document.getElementById('stat-con').textContent = stats.con;
@@ -1855,6 +1887,9 @@ const App = {
 
     // Atualiza Slots de Equipamento Equipados na Sidebar
     this.renderEquippedGearVisuals();
+
+    // Sincroniza a aba mobile do Herói
+    this.renderMobileHeroTab();
 
     // Skin do Card
     const cardEl = document.getElementById('char-card');
@@ -1876,6 +1911,66 @@ const App = {
       cardEl.classList.add('skin-fire-red');
     } else {
       cardEl.classList.add('skin-default');
+    }
+  },
+
+  // Sincroniza dados da interface para a aba nativa "Herói" (Mobile Tab)
+  renderMobileHeroTab() {
+    const char = this.state.character;
+    const stats = this.getEffectiveStats();
+
+    // Identidade
+    const heroAvatar = document.getElementById('hero-tab-avatar');
+    const heroName = document.getElementById('hero-tab-name');
+    const heroTitle = document.getElementById('hero-tab-title');
+    const heroClass = document.getElementById('hero-tab-class');
+    if (heroAvatar) heroAvatar.textContent = document.getElementById('char-avatar')?.textContent || '🧙‍♂️';
+    if (heroName) heroName.textContent = char.name || 'Herói do Foco';
+    if (heroTitle) heroTitle.textContent = char.activeTitle;
+    if (heroClass) heroClass.textContent = document.getElementById('char-class')?.textContent || '';
+
+    // Gold
+    const heroGold = document.getElementById('hero-tab-gold');
+    if (heroGold) heroGold.textContent = char.gold;
+
+    // XP & Nível
+    const xpNeeded = this.getXpRequired(char.level);
+    const xpPercent = Math.min(100, (char.xp / xpNeeded) * 100);
+    const heroLevel = document.getElementById('hero-tab-level');
+    const heroXpRatio = document.getElementById('hero-tab-xp-ratio');
+    const heroXpFill = document.getElementById('hero-tab-xp-fill');
+    if (heroLevel) heroLevel.textContent = char.level;
+    if (heroXpRatio) heroXpRatio.textContent = `${char.xp} / ${xpNeeded} XP`;
+    if (heroXpFill) heroXpFill.style.width = `${xpPercent}%`;
+
+    // Atributos
+    const heroFoc = document.getElementById('hero-tab-foc');
+    const heroCon = document.getElementById('hero-tab-con');
+    const heroInt = document.getElementById('hero-tab-int');
+    if (heroFoc) heroFoc.textContent = stats.foc;
+    if (heroCon) heroCon.textContent = stats.con;
+    if (heroInt) heroInt.textContent = stats.int;
+
+    // Equipamentos
+    const gearContainer = document.getElementById('hero-tab-gear');
+    if (gearContainer) {
+      gearContainer.innerHTML = '';
+      const slots = ['weapon', 'armor', 'accessory'];
+      slots.forEach(slot => {
+        const itemId = char.equipment[slot];
+        let icon = slot === 'weapon' ? '⚔️' : slot === 'armor' ? '🛡️' : '🦉';
+        if (itemId) {
+          const item = this.shopEquipments.find(e => e.id === itemId);
+          if (item) icon = item.emoji || item.icon;
+        }
+        gearContainer.innerHTML += `<div class="gear-slot-visual" style="width: 46px; height: 46px; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); border-radius: 8px;">${icon}</div>`;
+      });
+    }
+
+    // Email da conta
+    const heroEmail = document.getElementById('hero-tab-email');
+    if (heroEmail) {
+      heroEmail.textContent = SupabaseAuth.currentUser ? SupabaseAuth.currentUser.email : 'Sessão Offline';
     }
   },
 
@@ -1947,6 +2042,9 @@ const App = {
 
   renderGold() {
     document.getElementById('gold-value').textContent = this.state.character.gold;
+    // Sincroniza gold com a aba mobile Herói
+    const heroGold = document.getElementById('hero-tab-gold');
+    if (heroGold) heroGold.textContent = this.state.character.gold;
   },
 
   renderTimerDisplay() {
@@ -2325,9 +2423,41 @@ const App = {
           this.renderAnalyticsDashboard();
         } else if (tabName === 'skin-shop') {
           this.renderEpicShop();
+        } else if (tabName === 'hero') {
+          this.renderMobileHeroTab();
         }
       });
     });
+
+    // 1b. (Removido — Modal de perfil substituído pela aba nativa 'Herói' no mobile)
+
+    // Listener de abas do Character Card (Status vs Infos)
+    document.querySelectorAll('.char-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        if (e.currentTarget.classList.contains('active')) return;
+        
+        document.querySelectorAll('.char-tab-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+
+        if (e.currentTarget.id === 'btn-tab-status') {
+          document.getElementById('tab-content-status').style.display = 'block';
+          document.getElementById('tab-content-infos').style.display = 'none';
+        } else {
+          document.getElementById('tab-content-status').style.display = 'none';
+          document.getElementById('tab-content-infos').style.display = 'block';
+        }
+      });
+    });
+
+    // Listener Global para Logout (Event Delegation)
+    document.body.addEventListener('click', async (e) => {
+      const logoutBtn = e.target.closest('#btn-logout') || e.target.closest('#hero-tab-logout') || e.target.closest('.btn-logout-small');
+      if (logoutBtn) {
+        e.preventDefault();
+        await this.handleLogout();
+      }
+    });
+
 
     // 2. Seleção de Modos do Timer
     document.querySelectorAll('.timer-modes .timer-mode-btn').forEach(btn => {
@@ -2350,6 +2480,21 @@ const App = {
     document.getElementById('timer-reset').addEventListener('click', () => {
       this.abortTimer();
     });
+
+    // 3b. Escuta alterações em tempo real do Tempo Personalizado
+    const customMinutesInput = document.getElementById('custom-minutes');
+    if (customMinutesInput) {
+      const updateCustomTime = () => {
+        if (!this.timer.intervalId && this.timer.mode === 'focus') {
+          const val = parseInt(customMinutesInput.value) || 25;
+          this.timer.duration = val * 60;
+          this.timer.timeLeft = this.timer.duration;
+          this.renderTimerDisplay();
+        }
+      };
+      customMinutesInput.addEventListener('input', updateCustomTime);
+      customMinutesInput.addEventListener('change', updateCustomTime);
+    }
 
     // 4. Modos da Sub-Aba de Missões
     document.querySelectorAll('#tab-quests .quest-tabs-header .quest-tab-btn').forEach(btn => {
@@ -2680,12 +2825,25 @@ const App = {
     if (app) app.classList.remove('auth-blurred');
   },
 
+  /** Executa o fluxo completo e seguro de logout */
+  async handleLogout() {
+    try {
+      this.closeActiveModals(); // Fecha ficha de personagem se estiver aberta
+      await SupabaseAuth.signOut();
+      this.resetToAuthScreen();
+    } catch (e) {
+      console.warn('[Logout] Erro ao sair:', e);
+      // Força a tela de login mesmo se houver erro
+      this.resetToAuthScreen();
+    }
+  },
+
   /** Reinicia o estado e volta à tela de login (após logout) */
   resetToAuthScreen() {
     // Limpa cache local
     localStorage.removeItem('dopastudy_save');
     // Para qualquer timer ativo
-    if (this.timer.intervalId) {
+    if (this.timer && this.timer.intervalId) {
       clearInterval(this.timer.intervalId);
       this.timer.intervalId = null;
     }
@@ -2749,30 +2907,34 @@ const App = {
         this._setAuthError('');
 
         try {
+          let user = null;
           if (authMode === 'login') {
-            await SupabaseAuth.signIn(email, password);
+            user = await SupabaseAuth.signIn(email, password);
           } else {
-            await SupabaseAuth.signUp(email, password);
+            user = await SupabaseAuth.signUp(email, password);
           }
+          
+          // Cláusula de guarda rígida: se não retornar um objeto user válido (curto-circuito)
+          if (!user || !user.id) {
+            this._setAuthError('❌ Falha na autenticação. Verifique suas credenciais.');
+            this._setAuthLoading(false);
+            return; // Bloqueia a execução imediatamente
+          }
+          
           // O bootGame é acionado pelo onAuthChange listener no init()
-          // mas chamamos diretamente também para garantir imediatismo:
+          // mas chamamos diretamente também para garantir imediatismo APENAS se não houver erros
           await this.bootGame();
         } catch (err) {
           const msg = this._translateAuthError(err.message);
           this._setAuthError(msg);
           this._setAuthLoading(false);
+          return; // Curto-circuito rígido: não avança em caso de erro!
         }
       });
     }
 
     // --- Botão Logout na sidebar ---
-    const logoutBtn = document.getElementById('btn-logout');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', async () => {
-        await SupabaseAuth.signOut();
-        this.resetToAuthScreen();
-      });
-    }
+    // (Ouvinte global de Event Delegation resolve o logout agora. Removido ouvinte duplicado aqui).
   },
 
   /** Ativa/desativa o loader e botão de submit */

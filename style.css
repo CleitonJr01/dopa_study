@@ -272,6 +272,13 @@ body::after {
 }
 
 /* ==========================================================================
+   UTILITY CLASSES
+   ========================================================================== */
+.mobile-only {
+  display: none !important;
+}
+
+/* ==========================================================================
    LAYOUT STRUCTURE
    ========================================================================== */
 .app-container {
@@ -343,6 +350,42 @@ main.main-content::-webkit-scrollbar-thumb:hover,
   padding: 20px;
   text-align: center;
   overflow: hidden;
+}
+
+/* ==========================================================================
+   CHAR CARD TABS (Status / Infos)
+   ========================================================================== */
+.char-tabs-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.char-tab-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  padding: 4px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.char-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.char-tab-btn.active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb), 0.1);
+  box-shadow: 0 0 8px rgba(var(--accent-primary-rgb), 0.3);
 }
 
 /* Skins & Aura Effects */
@@ -2071,11 +2114,19 @@ nav.nav-menu {
     max-width: 110px;
   }
 
-  /* Hide non-essential layout details in compact header mode */
+  /* Hide non-essential class and stats list */
   .char-class,
-  .active-gear-panel,
-  .char-card .stats-block {
-    display: none;
+  .char-tabs-toggle,
+  .infos-container,
+  .char-card .stats-block,
+  .sidebar .active-gear-panel,
+  .sidebar .xp-header,
+  .sidebar .gold-counter {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: flex !important;
   }
 
   /* Epic details: progress bar becomes a thin neon-green line under the header */
@@ -2087,8 +2138,26 @@ nav.nav-menu {
     margin: 0 !important;
   }
 
+  /* Show player level as an absolute badge on the corner of the avatar! */
   .char-card .xp-header {
-    display: none;
+    display: flex !important;
+    position: absolute;
+    top: 24px;
+    left: 26px;
+    font-size: 0.55rem;
+    font-family: var(--font-mono);
+    color: #fff;
+    background: var(--accent-xp);
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 1px 3px;
+    border-radius: 4px;
+    font-weight: 700;
+    line-height: 1;
+    z-index: 10;
+  }
+
+  .char-card #char-xp-ratio {
+    display: none; /* saved space */
   }
 
   .char-card .xp-bar-bg {
@@ -2899,4 +2968,61 @@ nav.nav-menu {
   font-size: 0.7rem;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ==========================================================================
+   DESKTOP COMPACT HEIGHT OPTIMIZATION (WHEN WINDOW HEIGHT DECREASES)
+   ========================================================================== */
+@media (min-width: 769px) and (max-height: 760px) {
+  aside.sidebar {
+    gap: 10px;
+    padding: 12px;
+  }
+  .char-card {
+    padding: 12px;
+  }
+  .char-avatar-container {
+    width: 60px;
+    height: 60px;
+  }
+  .char-avatar {
+    font-size: 1.8rem;
+  }
+  .char-name {
+    font-size: 0.95rem;
+  }
+  .char-title, .char-class {
+    font-size: 0.7rem;
+    margin-top: 1px;
+  }
+  .active-gear-panel {
+    margin-top: 6px;
+  }
+  .active-gear-slots {
+    gap: 6px;
+  }
+  .gear-slot-visual {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+  .xp-container {
+    margin-top: 8px !important;
+  }
+  .char-card .stats-block {
+    margin-top: 8px;
+    padding: 6px 4px;
+    gap: 4px;
+  }
+  .stat-row {
+    font-size: 0.72rem;
+  }
+  .gold-counter {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+  .user-info-bar {
+    padding: 6px 8px;
+    gap: 4px;
+  }
 }

@@ -73,6 +73,9 @@
       
       <!-- Navigation Menu -->
       <nav class="nav-menu">
+        <a class="nav-item mobile-only" data-tab="hero">
+          <span class="nav-icon">👤</span> Herói
+        </a>
         <a class="nav-item active" data-tab="adventure">
           <span class="nav-icon">⚔️</span> Aventura
         </a>
@@ -105,6 +108,68 @@
          ========================================================================== -->
     <main class="main-content">
       
+      <!-- TAB: HERO (Mobile Only — Full Character Sheet) -->
+      <section id="tab-hero" class="view-tab">
+        <h2 class="section-title" style="text-align:center; margin-bottom: 16px;">👤 Ficha do Herói</h2>
+        <div class="glass-panel" style="padding: 20px; text-align: center;">
+          <!-- Avatar & Identity -->
+          <div class="char-avatar-container" style="width: 80px; height: 80px; margin: 0 auto 10px; padding: 4px;">
+            <div id="hero-tab-avatar" class="char-avatar" style="font-size: 2.2rem;">🧙‍♂️</div>
+          </div>
+          <h2 id="hero-tab-name" style="font-size: 1.4rem; font-weight: 800; color: #fff; margin: 0;">Herói do Foco</h2>
+          <div id="hero-tab-title" style="font-size: 0.9rem; color: var(--accent-gold); margin-top: 4px;">Recruta do Saber</div>
+          <div id="hero-tab-class" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">Mago da Matemática</div>
+
+          <!-- Gold -->
+          <div class="gold-counter glass-panel" style="margin: 15px auto; justify-content: center; width: max-content; padding: 8px 16px;">
+            <span class="gold-icon">🪙</span>
+            <span id="hero-tab-gold">0</span>
+            <span>GP</span>
+          </div>
+
+          <!-- XP & Level -->
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem;">
+              <span>NÍVEL <span id="hero-tab-level">1</span></span>
+              <span id="hero-tab-xp-ratio">0 / 100 XP</span>
+            </div>
+            <div class="xp-bar-bg" style="height: 8px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border);">
+              <div id="hero-tab-xp-fill" class="xp-bar-fill" style="height: 100%; border-radius: 4px; background: var(--accent-xp); width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Attributes -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span id="hero-tab-foc" style="font-size: 1.2rem; font-weight: 700; color: var(--accent-primary);">10</span>
+              <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600;">FOCO</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span id="hero-tab-con" style="font-size: 1.2rem; font-weight: 700; color: var(--accent-hp);">10</span>
+              <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600;">CONSISTÊNCIA</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span id="hero-tab-int" style="font-size: 1.2rem; font-weight: 700; color: var(--accent-xp);">10</span>
+              <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600;">INTELECTO</span>
+            </div>
+          </div>
+
+          <!-- Equipment Slots -->
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px; margin-bottom: 15px;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">EQUIPAMENTOS ATIVOS</div>
+            <div id="hero-tab-gear" style="display: flex; justify-content: center; gap: 12px;">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Account & Logout -->
+          <div style="font-size: 0.8rem; color: var(--text-muted); text-align: center; border-top: 1px solid var(--card-border); padding-top: 12px;">
+            <span>Conta: </span><strong id="hero-tab-email" style="color: var(--text-main);">email@exemplo.com</strong>
+            <button id="hero-tab-logout" class="glass-btn danger btn-logout-small" style="margin-top: 12px; width: 100%; padding: 8px;">⏏ Sair da Conta</button>
+          </div>
+        </div>
+      </section>
+
       <!-- TAB 1: ADVENTURE (TIMER & BATTLE) -->
       <section id="tab-adventure" class="view-tab active">
         <div class="view-header">
@@ -456,6 +521,8 @@
       <div id="splash-reward-text" class="splash-reward-text">Você pode assistir 1 episódio de série.</div>
       <button id="btn-close-splash" class="glass-btn primary">Continuar Jornada ⚔️</button>
     </div>
+
+    <!-- Modal overlay keeps running splash/intro only. Profile modal has been removed in favor of native mobile tab. -->
 
   </div>
 
