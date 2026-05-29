@@ -772,6 +772,10 @@ const App = {
     );
   },
 
+  saveData() {
+    this.saveState();
+  },
+
   // ==========================================================================
   // ATRIBUTOS DINÂMICOS (GETTERS EFETIVOS)
   // ==========================================================================
@@ -1480,16 +1484,18 @@ const App = {
   },
 
   addGold(amount) {
-    this.state.character.gold += amount;
+    this.state.character.gold = Number(this.state.character.gold) + Number(amount);
     this.renderGold();
-    this.saveState();
+    this.saveData();
   },
 
   deductGold(amount) {
-    if (this.state.character.gold >= amount) {
-      this.state.character.gold -= amount;
+    const currentGold = Number(this.state.character.gold);
+    const cost = Number(amount);
+    if (currentGold >= cost) {
+      this.state.character.gold = currentGold - cost;
       this.renderGold();
-      this.saveState();
+      this.saveData();
       return true;
     }
     return false;
@@ -1693,7 +1699,7 @@ const App = {
       AudioSynth.playQuestComplete();
       this.state.analytics.rewardsClaimed += 1;
       this.triggerWeeklyProgress('rewards_claimed', 1);
-      this.saveState();
+      this.saveData();
 
       this.addLog(`🛍️ Recompensa comprada: "${reward.name}" por ${reward.cost} GP.`, "victory");
       this.showSplash("Recompensa Liberada! 🎁", `Você comprou e pode usufruir de:<br><strong>${reward.name}</strong><br><span style="font-size:0.85rem;color:var(--text-sub)">${reward.desc}</span>`, "🎉");
@@ -1707,30 +1713,64 @@ const App = {
   // LOJA ÉPICA & GACHA
   // ==========================================================================
   buyEpicItem(type, id, cost) {
-    if (this.deductGold(cost)) {
-      AudioSynth.playQuestComplete();
+    const currentGold = Number(this.state.character.gold);
+    const itemCost = Number(cost);
+    if (currentGold >= itemCost) {
+      if (this.deductGold(itemCost)) {
+        AudioSynth.playQuestComplete();
 
-      if (type === 'skin') {
-        this.state.unlockedSkins.push(id);
-        this.addLog(`👑 Skin Desbloqueada: "${this.shopSkins.find(s => s.id === id).name}"!`, "victory");
-      } else if (type === 'title') {
-        this.state.unlockedTitles.push(id);
-        this.addLog(`👑 Título Desbloqueado: "${this.shopTitles.find(t => t.id === id).name}"!`, "victory");
-      } else if (type === 'theme') {
-        this.state.unlockedThemes.push(id);
-        this.addLog(`👑 Tema Desbloqueado: "${this.shopThemes.find(th => th.id === id).name}"!`, "victory");
-      } else if (type === 'equipment') {
-        this.state.unlockedEquipment.push(id);
-        this.addLog(`🗡️ Equipamento Desbloqueado: "${this.shopEquipments.find(eq => eq.id === id).name}"!`, "victory");
+        if (type === 'skin') {
+          this.state.unlockedSkins.push(id);
+          this.addLog(`👑 Skin Desbloqueada: "${this.shopSkins.find(s => s.id === id).name}"!`, "victory");
+        } else if (type === 'title') {
+          this.state.unlockedTitles.push(id);
+          this.addLog(`👑 Título Desbloqueado: "${this.shopTitles.find(t => t.id === id).name}"!`, "victory");
+        } else if (type === 'theme') {
+          this.state.unlockedThemes.push(id);
+          this.addLog(`👑 Tema Desbloqueado: "${this.shopThemes.find(th => th.id === id).name}"!`, "victory");
+        } else if (type === 'equipment') {
+          this.state.unlockedEquipment.push(id);
+          this.addLog(`🗡️ Equipamento Desbloqueado: "${this.shopEquipments.find(eq => eq.id === id).name}"!`, "victory");
+        }
+
+        this.saveData();
+        this.checkCampaignQuests();
+        this.renderEpicShop();
+        this.renderCharacterCard();
       }
-
-      this.saveState();
-      this.checkCampaignQuests();
-      this.renderEpicShop();
-      this.renderCharacterCard();
     } else {
       AudioSynth.playWarning();
       alert("Ouro insuficiente para comprar este item!");
+    }
+  },
+
+  equipItem(itemId) {
+    const eq = this.shopEquipments.find(e => e.id === itemId);
+    if (eq) {
+      const slot = eq.slot;
+      if (slot === 'weapon' || slot === 'armor' || slot === 'accessory') {
+        const currentEquipped = this.state.character.equipment[slot];
+
+        if (currentEquipped === itemId) {
+          // Desequipa
+          this.state.character.equipment[slot] = null;
+          this.addLog(`🛡️ Desequipou ${eq.name}.`, "info");
+        } else {
+          // Equipa
+          this.state.character.equipment[slot] = itemId;
+          this.addLog(`🛡️ Equipou ${eq.name} no slot de ${slot === 'weapon' ? 'Arma' : slot === 'armor' ? 'Roupa' : 'Auxiliar'}.`, "info");
+        }
+
+        // Recalcular atributos efetivos
+        this.getEffectiveStats();
+
+        // Dispara persistência
+        this.saveData();
+
+        // Atualiza exibições
+        this.renderCharacterCard();
+        this.renderEpicShop();
+      }
     }
   },
 
@@ -1738,6 +1778,7 @@ const App = {
     AudioSynth.playClick();
 
     if (type === 'skin') {
+      this.state.character.currentSkin = id;
       this.state.character.activeSkin = id;
       this.addLog(`👑 Skin de Perfil equipada.`, "info");
     } else if (type === 'title') {
@@ -1750,24 +1791,11 @@ const App = {
       this.applyTheme(this.state.character.activeTheme);
       this.addLog(`👑 Tema alterado.`, "info");
     } else if (type === 'equipment') {
-      const eq = this.shopEquipments.find(e => e.id === id);
-      if (eq) {
-        const slot = eq.slot;
-        const currentEquipped = this.state.character.equipment[slot];
-
-        if (currentEquipped === id) {
-          // Desequipa
-          this.state.character.equipment[slot] = null;
-          this.addLog(`🛡️ Desequipou ${eq.name}.`, "info");
-        } else {
-          // Equipa
-          this.state.character.equipment[slot] = id;
-          this.addLog(`🛡️ Equipou ${eq.name} no slot de ${slot === 'weapon' ? 'Arma' : slot === 'armor' ? 'Roupa' : 'Auxiliar'}.`, "info");
-        }
-      }
+      this.equipItem(id);
+      return;
     }
 
-    this.saveState();
+    this.saveData();
     this.renderCharacterCard();
     this.renderEpicShop();
   },
@@ -1780,19 +1808,24 @@ const App = {
     const pot = this.shopPotions.find(p => p.id === id);
     if (!pot) return;
 
-    if (this.deductGold(cost)) {
-      AudioSynth.playQuestComplete();
+    const currentGold = Number(this.state.character.gold);
+    const potionCost = Number(cost);
 
-      if (!this.state.activeBuffs) {
-        this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
+    if (currentGold >= potionCost) {
+      if (this.deductGold(potionCost)) {
+        AudioSynth.playQuestComplete();
+
+        if (!this.state.activeBuffs) {
+          this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
+        }
+        this.state.activeBuffs[pot.type] = pot.duration;
+
+        this.saveData();
+        this.renderEpicShop();
+        this.renderBuffsTimeline();
+
+        this.addLog(`🧪 Consumiste ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
       }
-      this.state.activeBuffs[pot.type] = pot.duration;
-
-      this.saveState();
-      this.renderEpicShop();
-      this.renderBuffsTimeline();
-
-      this.addLog(`🧪 Consumiste ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
     } else {
       AudioSynth.playWarning();
       alert("Ouro insuficiente para comprar esta poção!");
@@ -1841,75 +1874,80 @@ const App = {
       cost = Math.round(120 * 0.85); // 15% de desconto
     }
 
-    if (this.deductGold(cost)) {
-      AudioSynth.playClick();
+    const currentGold = Number(this.state.character.gold);
+    const chestCost = Number(cost);
 
-      // Inicia animação visual de Baú no splash modal
-      this.openModal('splash-modal');
+    if (currentGold >= chestCost) {
+      if (this.deductGold(chestCost)) {
+        AudioSynth.playClick();
 
-      const splashIcon = document.getElementById('splash-icon');
-      const splashTitle = document.getElementById('splash-title');
-      const splashText = document.getElementById('splash-reward-text');
+        // Inicia animação visual de Baú no splash modal
+        this.openModal('splash-modal');
 
-      if (splashIcon && splashTitle && splashText) {
-        splashIcon.textContent = '📦';
-        splashIcon.classList.add('chest-unboxing');
-        splashTitle.textContent = 'Abrindo Baú Lendário...';
-        splashText.innerHTML = 'Evocando as forças cognitivas da sorte. Aguarde...';
+        const splashIcon = document.getElementById('splash-icon');
+        const splashTitle = document.getElementById('splash-title');
+        const splashText = document.getElementById('splash-reward-text');
 
-        // Bloqueia botão de continuar temporariamente
-        const closeBtn = document.getElementById('btn-close-splash');
-        if (closeBtn) closeBtn.disabled = true;
+        if (splashIcon && splashTitle && splashText) {
+          splashIcon.textContent = '📦';
+          splashIcon.classList.add('chest-unboxing');
+          splashTitle.textContent = 'Abrindo Baú Lendário...';
+          splashText.innerHTML = 'Evocando as forças cognitivas da sorte. Aguarde...';
 
-        setTimeout(() => {
-          splashIcon.classList.remove('chest-unboxing');
-          if (closeBtn) closeBtn.disabled = false;
+          // Bloqueia botão de continuar temporariamente
+          const closeBtn = document.getElementById('btn-close-splash');
+          if (closeBtn) closeBtn.disabled = true;
 
-          // Sorteio
-          const rand = Math.random();
-          if (rand < 0.60) {
-            // 60% Potion +20 XP
-            this.addXp(20);
-            AudioSynth.playQuestComplete();
-            splashIcon.textContent = '🧪';
-            splashTitle.textContent = 'Drop Comum! 🧪';
-            splashText.innerHTML = 'Você obteve uma <strong>Poção de Foco</strong>!<br>Concede +20 XP imediatos ao seu herói.';
-            this.addLog(`📦 Gacha: Poção de Foco obtida (+20 XP).`, "victory");
-          } else if (rand < 0.90) {
-            // 30% Rares Title: Imparavel ou Silicio
-            const titleId = Math.random() < 0.5 ? 'title-imparavel' : 'title-silicio';
-            const titleName = titleId === 'title-imparavel' ? 'O Imparável' : 'Cérebro de Silício';
+          setTimeout(() => {
+            splashIcon.classList.remove('chest-unboxing');
+            if (closeBtn) closeBtn.disabled = false;
 
-            if (!this.state.unlockedTitles.includes(titleId)) {
-              this.state.unlockedTitles.push(titleId);
+            // Sorteio
+            const rand = Math.random();
+            if (rand < 0.60) {
+              // 60% Potion +20 XP
+              this.addXp(20);
+              AudioSynth.playQuestComplete();
+              splashIcon.textContent = '🧪';
+              splashTitle.textContent = 'Drop Comum! 🧪';
+              splashText.innerHTML = 'Você obteve uma <strong>Poção de Foco</strong>!<br>Concede +20 XP imediatos ao seu herói.';
+              this.addLog(`📦 Gacha: Poção de Foco obtida (+20 XP).`, "victory");
+            } else if (rand < 0.90) {
+              // 30% Rares Title: Imparavel ou Silicio
+              const titleId = Math.random() < 0.5 ? 'title-imparavel' : 'title-silicio';
+              const titleName = titleId === 'title-imparavel' ? 'O Imparável' : 'Cérebro de Silício';
+
+              if (!this.state.unlockedTitles.includes(titleId)) {
+                this.state.unlockedTitles.push(titleId);
+              }
+              AudioSynth.playLevelUp();
+              splashIcon.textContent = '👑';
+              splashTitle.textContent = 'Drop Raro! 👑';
+              splashText.innerHTML = `Você desbloqueou um título honorífico exclusivo:<br><strong>"${titleName}"</strong><br>Exiba-o no seu card na aba de customização.`;
+              this.addLog(`📦 Gacha: Título "${titleName}" obtido.`, "victory");
+            } else {
+              // 10% God Mode skin
+              if (!this.state.unlockedSkins.includes('skin-god-mode')) {
+                this.state.unlockedSkins.push('skin-god-mode');
+              }
+              AudioSynth.playLevelUp();
+              splashIcon.textContent = '🔥';
+              splashTitle.textContent = 'DROP LENDÁRIO! 🌟';
+              splashText.innerHTML = 'Você alcançou o lendário <strong>Modo Deus</strong>!<br>Desbloqueou uma aura de chamas douradas divinas para equipar em seu card.';
+              this.addLog(`📦 Gacha: Skin MODO DEUS obtida! 🔥`, "victory");
             }
-            AudioSynth.playLevelUp();
-            splashIcon.textContent = '👑';
-            splashTitle.textContent = 'Drop Raro! 👑';
-            splashText.innerHTML = `Você desbloqueou um título honorífico exclusivo:<br><strong>"${titleName}"</strong><br>Exiba-o no seu card na aba de customização.`;
-            this.addLog(`📦 Gacha: Título "${titleName}" obtido.`, "victory");
-          } else {
-            // 10% God Mode skin
-            if (!this.state.unlockedSkins.includes('skin-god-mode')) {
-              this.state.unlockedSkins.push('skin-god-mode');
-            }
-            AudioSynth.playLevelUp();
-            splashIcon.textContent = '🔥';
-            splashTitle.textContent = 'DROP LENDÁRIO! 🌟';
-            splashText.innerHTML = 'Você alcançou o lendário <strong>Modo Deus</strong>!<br>Desbloqueou uma aura de chamas douradas divinas para equipar em seu card.';
-            this.addLog(`📦 Gacha: Skin MODO DEUS obtida! 🔥`, "victory");
-          }
 
-          this.state.analytics.rewardsClaimed++;
-          this.triggerWeeklyProgress('gacha_opened', 1);
-          this.checkCampaignQuests();
-          this.saveState();
-          this.renderAll();
-        }, 2200);
+            this.state.analytics.rewardsClaimed++;
+            this.triggerWeeklyProgress('gacha_opened', 1);
+            this.checkCampaignQuests();
+            this.saveData();
+            this.renderAll();
+          }, 2200);
+        }
       }
     } else {
       AudioSynth.playWarning();
-      alert(`Ouro insuficiente para abrir o Baú do Conhecimento Lendário (Preço: ${cost} GP)!`);
+      alert(`Ouro insuficiente para abrir o Baú do Conhecimento Lendário (Preço: ${chestCost} GP)!`);
     }
   },
 
@@ -2000,6 +2038,10 @@ const App = {
     this.renderBuffsTimeline();
   },
 
+  renderCharacter() {
+    this.renderCharacterCard();
+  },
+
   renderCharacterCard() {
     const char = this.state.character;
     const stats = this.getEffectiveStats(); // Usa atributos dinâmicos calculados
@@ -2052,24 +2094,19 @@ const App = {
 
     // Skin do Card
     const cardEl = document.getElementById('char-card');
-    cardEl.className = 'char-card glass-panel';
+    if (cardEl) {
+      // Remove todas as classes antigas que começam com skin-
+      Array.from(cardEl.classList).forEach(cls => {
+        if (cls.startsWith('skin-')) {
+          cardEl.classList.remove(cls);
+        }
+      });
 
-    if (char.activeSkin === 'skin-aura-purple') {
-      cardEl.classList.add('skin-aura-purple');
-    } else if (char.activeSkin === 'skin-aura-gold') {
-      cardEl.classList.add('skin-aura-gold');
-    } else if (char.activeSkin === 'skin-cosmic-space') {
-      cardEl.classList.add('skin-cosmic-space');
-    } else if (char.activeSkin === 'skin-god-mode') {
-      cardEl.classList.add('skin-god-mode');
-    } else if (char.activeSkin === 'skin-vaporwave-pink') {
-      cardEl.classList.add('skin-vaporwave-pink');
-    } else if (char.activeSkin === 'skin-matrix-green') {
-      cardEl.classList.add('skin-matrix-green');
-    } else if (char.activeSkin === 'skin-fire-red') {
-      cardEl.classList.add('skin-fire-red');
-    } else {
-      cardEl.classList.add('skin-default');
+      // Mapeia o currentSkin/activeSkin
+      const selectedSkin = char.currentSkin || char.activeSkin || 'skin-default';
+      const skinObj = this.shopSkins.find(s => s.id === selectedSkin);
+      const skinClass = skinObj ? (skinObj.class || skinObj.id) : selectedSkin;
+      cardEl.classList.add(skinClass);
     }
   },
 
@@ -2118,11 +2155,17 @@ const App = {
       slots.forEach(slot => {
         const itemId = char.equipment[slot];
         let icon = slot === 'weapon' ? '⚔️' : slot === 'armor' ? '🛡️' : '🦉';
+        let filledClass = '';
+        let title = slot === 'weapon' ? 'Arma vazia' : slot === 'armor' ? 'Roupa vazia' : 'Auxiliar vazio';
         if (itemId) {
           const item = this.shopEquipments.find(e => e.id === itemId);
-          if (item) icon = item.emoji || item.icon;
+          if (item) {
+            icon = item.emoji || item.icon;
+            filledClass = 'filled';
+            title = `${item.name} (+${item.bonus} ${item.bonusType.toUpperCase()})`;
+          }
         }
-        gearContainer.innerHTML += `<div class="gear-slot-visual" style="width: 46px; height: 46px; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); border-radius: 8px;">${icon}</div>`;
+        gearContainer.innerHTML += `<div class="gear-slot-visual ${filledClass}" title="${title}" style="width: 46px; height: 46px; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); border-radius: 8px;">${icon}</div>`;
       });
     }
 
@@ -2408,7 +2451,7 @@ const App = {
         const isEquipped = this.state.character.equipment[eq.slot] === eq.id;
 
         const card = document.createElement('div');
-        card.className = `shop-card glass-panel ${isUnlocked ? 'unlocked' : ''}`;
+        card.className = `shop-card glass-panel ${isUnlocked ? 'unlocked' : ''} ${isEquipped ? 'equipped' : ''}`;
 
         let actionBtnMarkup = '';
         if (isEquipped) {
@@ -2438,7 +2481,7 @@ const App = {
         const isActive = this.state.character.activeSkin === skin.id;
 
         const card = document.createElement('div');
-        card.className = `shop-card glass-panel ${isUnlocked && skin.id !== 'skin-default' ? 'unlocked' : ''}`;
+        card.className = `shop-card glass-panel ${isUnlocked && skin.id !== 'skin-default' ? 'unlocked' : ''} ${isActive ? 'equipped' : ''}`;
 
         let actionBtnMarkup = '';
         if (isActive) {
@@ -2476,7 +2519,7 @@ const App = {
         const isActive = this.state.character.activeTitle === title.name;
 
         const card = document.createElement('div');
-        card.className = `shop-card glass-panel ${isUnlocked && title.cost > 0 ? 'unlocked' : ''}`;
+        card.className = `shop-card glass-panel ${isUnlocked && title.cost > 0 ? 'unlocked' : ''} ${isActive ? 'equipped' : ''}`;
 
         let actionBtnMarkup = '';
         if (isActive) {
@@ -2542,7 +2585,7 @@ const App = {
         const isActive = this.state.character.activeTheme === theme.themeClass;
 
         const card = document.createElement('div');
-        card.className = `shop-card glass-panel ${isUnlocked && theme.cost > 0 ? 'unlocked' : ''}`;
+        card.className = `shop-card glass-panel ${isUnlocked && theme.cost > 0 ? 'unlocked' : ''} ${isActive ? 'equipped' : ''}`;
 
         let actionBtnMarkup = '';
         if (isActive) {

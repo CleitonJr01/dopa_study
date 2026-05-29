@@ -1416,6 +1416,27 @@ label:has(.quest-checkbox:disabled) {
   box-shadow: var(--neon-glow-xp);
 }
 
+.shop-card.equipped {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 15px rgba(255, 214, 10, 0.4), var(--shadow-primary);
+}
+
+.shop-card.equipped::before {
+  content: 'EQUIPADO';
+  position: absolute;
+  top: 15px;
+  right: -30px;
+  background: var(--accent-gold);
+  color: #000000;
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 4px 30px;
+  transform: rotate(45deg);
+  box-shadow: var(--neon-glow-gold);
+  z-index: 1;
+}
+
+
 .shop-card-info {
   display: flex;
   flex-direction: column;
