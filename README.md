@@ -34,7 +34,7 @@ O projeto expandiu sua infraestrutura para suportar salvamento multiplataforma s
   2. `Supabase (dopastudy_profiles)`: Sincronização assíncrona em background que atua como a fonte da verdade na nuvem. O jogo nunca trava aguardando requisições de rede.
 
 ---
-
+## Link: https://dopa-study.vercel.app/
 ## 🚀 Como Executar Localmente
 
 ### 1. Clonar e Configurar as Variáveis de Nuvem
