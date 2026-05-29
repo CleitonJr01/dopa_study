@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DopaStudy: Gamified Study RPG</title>
+  <meta name="description" content="Transforme seus estudos em uma aventura RPG. Ganhe ouro, derrote monstros e troque por recompensas reais.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- ==========================================================================
+         SIDEBAR (CHARACTER PROFILE & NAVIGATION)
+         ========================================================================== -->
+    <aside class="sidebar glass-panel">
+      <!-- Player Card -->
+      <div id="char-card" class="char-card glass-panel skin-default">
+        <div class="char-avatar-container">
+          <div id="char-avatar" class="char-avatar">🧙‍♂️</div>
+        </div>
+        <h2 id="char-name" class="char-name">Herói do Foco</h2>
+        <div id="char-title" class="char-title">Recruta do Saber</div>
+        <div id="char-class" class="char-class">Mago da Matemática</div>
+        
+        <!-- Active Equipment slots -->
+        <div class="active-gear-panel">
+          <div class="active-gear-title">Equipamento Ativo</div>
+          <div class="active-gear-slots">
+            <div id="slot-weapon" class="gear-slot-visual" data-slot-label="Arma" title="Arma vazia">⚔️</div>
+            <div id="slot-armor" class="gear-slot-visual" data-slot-label="Roupa" title="Roupa vazia">🛡️</div>
+            <div id="slot-accessory" class="gear-slot-visual" data-slot-label="Auxiliar" title="Auxiliar vazio">🦉</div>
+          </div>
+        </div>
+        
+        <!-- XP Progress Bar -->
+        <div class="xp-container" style="margin-top: 14px;">
+          <div class="xp-header">
+            <span>NÍVEL <span id="char-level">1</span></span>
+            <span id="char-xp-ratio">0 / 100 XP</span>
+          </div>
+          <div class="xp-bar-bg">
+            <div id="char-xp-fill" class="xp-bar-fill"></div>
+          </div>
+        </div>
+        
+        <!-- Character Stats -->
+        <div class="stats-block">
+          <div class="stat-item" title="Foco (Aumenta o dano causado por segundo no timer)">
+            <span id="stat-foc" class="stat-val">10</span>
+            <span class="stat-lbl">FOC</span>
+          </div>
+          <div class="stat-item" title="Consistência (Diminui o tempo de contra-ataque por pausas)">
+            <span id="stat-con" class="stat-val">10</span>
+            <span class="stat-lbl">CON</span>
+          </div>
+          <div class="stat-item" title="Intelecto (Aumenta o ganho de XP em missões)">
+            <span id="stat-int" class="stat-val">10</span>
+            <span class="stat-lbl">INT</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Currency Bar -->
+      <div class="gold-counter glass-panel">
+        <span class="gold-icon">🪙</span>
+        <span id="gold-value">0</span>
+        <span>GP</span>
+      </div>
+      
+      <!-- Navigation Menu -->
+      <nav class="nav-menu">
+        <a class="nav-item active" data-tab="adventure">
+          <span class="nav-icon">⚔️</span> Aventura
+        </a>
+        <a class="nav-item" data-tab="quests">
+          <span class="nav-icon">📋</span> Missões
+        </a>
+        <a class="nav-item" data-tab="habit-shop">
+          <span class="nav-icon">🛍️</span> Loja de Recompensas
+        </a>
+        <a class="nav-item" data-tab="skin-shop">
+          <span class="nav-icon">👑</span> Loja Épica
+        </a>
+        <a class="nav-item" data-tab="analytics">
+          <span class="nav-icon">📊</span> Estatísticas
+        </a>
+      </nav>
+      
+      <div class="sidebar-footer">
+        DopaStudy v1.1.0
+      </div>
+    </aside>
+
+    <!-- ==========================================================================
+         MAIN CONTENT PANELS
+         ========================================================================== -->
+    <main class="main-content">
+      
+      <!-- TAB 1: ADVENTURE (TIMER & BATTLE) -->
+      <section id="tab-adventure" class="view-tab active">
+        <div class="view-header">
+          <h1 class="view-title"><span>⚔️</span> Câmara de Foco</h1>
+        </div>
+        
+        <div class="adventure-grid">
+          <!-- Focus chamber / timer panel -->
+          <div class="timer-panel glass-panel">
+            <div class="timer-circle-container">
+              <!-- Focus Combo Badge -->
+              <div id="combo-badge" class="combo-badge-container">
+                <span>🔥 Combo: x</span><span id="combo-value-badge">0</span>
+              </div>
+              
+              <svg class="timer-svg" viewBox="0 0 100 100">
+                <circle class="timer-track" cx="50" cy="50" r="45"></circle>
+                <circle id="timer-progress" class="timer-progress" cx="50" cy="50" r="45" stroke-dasharray="282.7" stroke-dashoffset="0"></circle>
+              </svg>
+              <div class="timer-text-container">
+                <div id="timer-display" class="timer-display">25:00</div>
+                <div id="timer-mode-label" class="timer-mode-label">Foco ativo</div>
+              </div>
+            </div>
+            
+            <!-- Active Buffs Timeline -->
+            <div id="buffs-timeline" class="buffs-timeline"></div>
+            
+            <!-- Timer Mode selectors -->
+            <div class="timer-modes">
+              <button class="glass-btn timer-mode-btn primary" data-mode="focus">Foco (25m)</button>
+              <button class="glass-btn timer-mode-btn" data-mode="short-break">Pausa (5m)</button>
+              <button class="glass-btn timer-mode-btn" data-mode="long-break">Intervalo (15m)</button>
+            </div>
+            
+            <!-- Timer controls -->
+            <div class="timer-controls">
+              <button id="timer-start" class="glass-btn success">▶ Iniciar</button>
+              <button id="timer-pause" class="glass-btn" disabled>⏸ Pausar</button>
+              <button id="timer-reset" class="glass-btn danger" disabled>⏹ Desistir</button>
+            </div>
+            
+            <!-- Custom focus duration -->
+            <div class="custom-time-input">
+              <span>Tempo Personalizado:</span>
+              <input type="number" id="custom-minutes" min="1" max="180" value="25">
+              <span>min</span>
+            </div>
+
+            <!-- Subject Link input -->
+            <div class="subject-link-box">
+              <input type="text" id="subject-link-input" class="glass-input" placeholder="Vincular foco a uma matéria/projeto real...">
+            </div>
+
+            <!-- Counter Attack Alarm (hidden by default) -->
+            <div id="pause-alert" class="pause-alert" style="display: none;">
+              <span>⚠️ <strong>Ataque do Monstro!</strong> Volte a focar em:</span>
+              <span id="pause-timer-counter" class="pause-timer-counter">60s</span>
+            </div>
+          </div>
+          
+          <!-- Monster details panel -->
+          <div class="battle-panel glass-panel">
+            <div class="monster-card">
+              <!-- Floating Text Targets -->
+              <div id="floating-text-container" class="floating-text-container"></div>
+              
+              <div class="monster-header">
+                <span class="monster-name" id="monster-name">Slime da Procrastinação</span>
+                <span class="monster-level" id="monster-level">Nível 1</span>
+              </div>
+              <div class="monster-sprite-container">
+                <span id="monster-sprite" class="monster-sprite idle">🟢</span>
+              </div>
+              <div class="hp-container">
+                <div class="hp-header">
+                  <span>HP DO MONSTRO</span>
+                  <span id="monster-hp-text">100 / 100 HP</span>
+                </div>
+                <div class="hp-bar-bg">
+                  <div id="monster-hp-fill" class="hp-bar-fill"></div>
+                </div>
+              </div>
+              <div class="monster-loot-preview">
+                <span>Recompensa:</span>
+                <span class="reward-badge xp">✨ <span id="monster-reward-xp">50</span> XP</span>
+                <span class="reward-badge gold">🪙 <span id="monster-reward-gold">25</span> GP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Battle Activity logs -->
+        <div class="log-panel glass-panel">
+          <div class="log-header">
+            <span>📜</span> Registro de Combate
+          </div>
+          <div id="log-container" class="log-container scroll-container">
+            <div class="log-entry info">Você entrou na masmorra de estudos. Selecione uma duração e inicie o timer para começar o combate.</div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- TAB 2: QUEST BOARD (TRIPARTITE) -->
+      <section id="tab-quests" class="view-tab">
+        <div class="view-header">
+          <h1 class="view-title"><span>📋</span> Quadro de Missões</h1>
+          <button id="open-add-quest-modal" class="glass-btn primary">+ Criar Missão</button>
+        </div>
+        
+        <!-- Tab Subnavigation -->
+        <div class="quest-tabs-header">
+          <button class="quest-tab-btn active" data-quest-type="daily">Missões Diárias</button>
+          <button class="quest-tab-btn" data-quest-type="weekly">Missões Semanais</button>
+          <button class="quest-tab-btn" data-quest-type="campaign">Campanha Épica</button>
+        </div>
+        
+        <!-- Daily Quests Pane -->
+        <div id="pane-daily" class="quest-pane active">
+          <div class="quest-list" id="daily-quest-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        
+        <!-- Weekly Quests Pane -->
+        <div id="pane-weekly" class="quest-pane">
+          <div class="quest-list" id="weekly-quest-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        
+        <!-- Campaign Quests Pane -->
+        <div id="pane-campaign" class="quest-pane">
+          <div class="quest-list" id="campaign-quest-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+      
+      <!-- TAB 3: HABIT SHOP (TEMPTATION BUNDLING) -->
+      <section id="tab-habit-shop" class="view-tab">
+        <div class="view-header">
+          <h1 class="view-title"><span>🛍️</span> Loja de Recompensas de Hábitos</h1>
+          <button id="open-add-reward-modal" class="glass-btn primary">+ Nova Recompensa</button>
+        </div>
+        <p class="view-subtitle" style="color: var(--text-sub); margin-top: -16px; margin-bottom: 8px;">
+          Gaste seu ouro suado em prazeres saudáveis para recompensar sua dedicação e liberar dopamina de forma controlada.
+        </p>
+        
+        <div class="shop-grid" id="habit-rewards-list">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+      
+      <!-- TAB 4: SKIN & CUSTOMIZATION SHOP -->
+      <section id="tab-skin-shop" class="view-tab">
+        <div class="view-header">
+          <h1 class="view-title"><span>👑</span> Loja Épica de Customização</h1>
+        </div>
+        <p class="view-subtitle" style="color: var(--text-sub); margin-top: -16px; margin-bottom: 8px;">
+          Adquira equipamentos lendários com bônus de atributos, auras mágicas de perfil, títulos de prestígio ou abra o Baú Lendário Gacha!
+        </p>
+        
+        <div class="shop-sections-nav">
+          <button class="quest-tab-btn active" data-shop-cat="equipments">Equipamento RPG</button>
+          <button class="quest-tab-btn" data-shop-cat="potions">Poções & Consumíveis</button>
+          <button class="quest-tab-btn" data-shop-cat="skins">Bordas & Cards</button>
+          <button class="quest-tab-btn" data-shop-cat="titles">Títulos de Prestígio</button>
+          <button class="quest-tab-btn" data-shop-cat="themes">Temas de Interface</button>
+        </div>
+
+        <div class="shop-grid" id="epic-shop-list">
+          <!-- Dynamically populated based on active sub-category -->
+        </div>
+      </section>
+      
+      <!-- TAB 5: ANALYTICS -->
+      <section id="tab-analytics" class="view-tab">
+        <div class="view-header">
+          <h1 class="view-title"><span>📊</span> Dashboard de Desempenho</h1>
+        </div>
+        
+        <!-- Stats summary cards -->
+        <div class="stats-grid">
+          <div class="stat-card glass-panel streak">
+            <div class="stat-card-icon">🔥</div>
+            <div class="stat-card-details">
+              <span id="stat-streak-val" class="stat-card-value">0</span>
+              <span class="stat-card-label">Dias de Streak</span>
+            </div>
+          </div>
+          <div class="stat-card glass-panel focus">
+            <div class="stat-card-icon">⏱️</div>
+            <div class="stat-card-details">
+              <span id="stat-total-focus" class="stat-card-value">0 min</span>
+              <span class="stat-card-label">Foco Acumulado</span>
+            </div>
+          </div>
+          <div class="stat-card glass-panel defeated">
+            <div class="stat-card-icon">👾</div>
+            <div class="stat-card-details">
+              <span id="stat-monsters-killed" class="stat-card-value">0</span>
+              <span class="stat-card-label">Monstros Derrotados</span>
+            </div>
+          </div>
+          <div class="stat-card glass-panel claimed">
+            <div class="stat-card-icon">🎁</div>
+            <div class="stat-card-details">
+              <span id="stat-rewards-bought" class="stat-card-value">0</span>
+              <span class="stat-card-label">Recompensas Resgatadas</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Chart row -->
+        <div class="analytics-chart-panel glass-panel">
+          <div class="chart-header">
+            <h3 style="font-size: 1.1rem; font-weight: 700;">Minutos de Foco Recentes (Últimos 7 dias)</h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);" id="chart-date-range">Esta semana</span>
+          </div>
+          
+          <div class="chart-container">
+            <div id="analytics-bar-chart" class="bar-chart">
+              <!-- Rendered via JavaScript -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ==========================================================================
+       MODALS OVERLAY SYSTEM
+       ========================================================================== -->
+
+  <!-- Modal overlay -->
+  <div id="modal-overlay" class="modal-overlay">
+    
+    <!-- 1. INTRO / CREATION MODAL -->
+    <div id="intro-modal" class="modal-content glass-panel intro-modal" style="display: none;">
+      <div class="modal-header">
+        <h3 class="modal-title">✨ Escolha Sua Classe de Estudante</h3>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.9rem; color: var(--text-sub); margin-bottom: 12px;">
+          Bem-vindo ao <strong>DopaStudy</strong>! Para iniciar sua jornada, crie seu personagem escolhendo a classe que melhor reflete seu perfil de estudos.
+        </p>
+        
+        <div class="form-group">
+          <label for="intro-player-name">Nome do Personagem:</label>
+          <input type="text" id="intro-player-name" class="glass-input" placeholder="Ex: Cleiton" value="Estudante Lendário">
+        </div>
+        
+        <div class="class-grid">
+          <div class="glass-panel class-card active" data-class="math">
+            <span class="class-card-icon">🧙‍♂️</span>
+            <span class="class-card-name">Mago da Matemática</span>
+            <span class="class-card-desc">Focado em números, lógica e ciências exatas. (+2 FOC inicial)</span>
+          </div>
+          <div class="glass-panel class-card" data-class="writing">
+            <span class="class-card-icon">🗡️</span>
+            <span class="class-card-name">Guerreiro da Escrita</span>
+            <span class="class-card-desc">Focado em produção textual, história e linguagens. (+2 CON inicial)</span>
+          </div>
+          <div class="glass-panel class-card" data-class="research">
+            <span class="class-card-icon">🏹</span>
+            <span class="class-card-name">Ladino da Pesquisa</span>
+            <span class="class-card-desc">Focado em buscar referências, resumos e análises. (+2 INT inicial)</span>
+          </div>
+          <div class="glass-panel class-card" data-class="coding">
+            <span class="class-card-icon">💻</span>
+            <span class="class-card-name">Druida do Código</span>
+            <span class="class-card-desc">Focado em lógica de programação e algoritmos. (+1 FOC, +1 INT iniciais)</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-save-character" class="glass-btn primary">Criar Personagem ⚔️</button>
+      </div>
+    </div>
+
+    <!-- 2. CREATE QUEST MODAL -->
+    <div id="add-quest-modal" class="modal-content glass-panel" style="display: none;">
+      <div class="modal-header">
+        <h3 class="modal-title">📋 Criar Nova Missão</h3>
+        <button class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="quest-title-input">Nome da Missão:</label>
+          <input type="text" id="quest-title-input" class="glass-input" placeholder="Ex: Resolver 10 equações">
+        </div>
+        <div class="form-group">
+          <label for="quest-desc-input">Descrição / Observações:</label>
+          <input type="text" id="quest-desc-input" class="glass-input" placeholder="Ex: Lista de cálculo do cap. 4">
+        </div>
+        <div class="form-group">
+          <label for="quest-type-select">Frequência da Missão:</label>
+          <select id="quest-type-select" class="glass-select">
+            <option value="daily">Diária (Habito recorrente de curto prazo)</option>
+            <option value="weekly">Semanal (Acumulado de médio prazo com meta)</option>
+            <option value="campaign">Campanha (Marco fixo de grande esforço)</option>
+          </select>
+        </div>
+        
+        <!-- Goal selector for Weekly quests (hidden by default) -->
+        <div class="form-group" id="weekly-goal-group" style="display: none;">
+          <label for="quest-weekly-target">Meta de Foco Requerido (Minutos):</label>
+          <input type="number" id="quest-weekly-target" class="glass-input" min="5" value="60">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="glass-btn modal-cancel">Cancelar</button>
+        <button id="btn-submit-quest" class="glass-btn primary">Adicionar Missão</button>
+      </div>
+    </div>
+
+    <!-- 3. CREATE CUSTOM HABIT REWARD MODAL -->
+    <div id="add-reward-modal" class="modal-content glass-panel" style="display: none;">
+      <div class="modal-header">
+        <h3 class="modal-title">🛍️ Nova Recompensa</h3>
+        <button class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="reward-name-input">Nome da Recompensa:</label>
+          <input type="text" id="reward-name-input" class="glass-input" placeholder="Ex: Assistir 1 episódio de série">
+        </div>
+        <div class="form-group">
+          <label for="reward-desc-input">Descrição:</label>
+          <input type="text" id="reward-desc-input" class="glass-input" placeholder="Ex: Apenas após cumprir a cota de estudo">
+        </div>
+        <div class="form-group">
+          <label for="reward-cost-input">Custo (Ouro GP):</label>
+          <input type="number" id="reward-cost-input" class="glass-input" min="10" value="100">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="glass-btn modal-cancel">Cancelar</button>
+        <button id="btn-submit-reward" class="glass-btn primary">Criar Recompensa</button>
+      </div>
+    </div>
+
+    <!-- 4. SPLASH MODAL (REWARD CLAIMED / LEVEL UP / GACHA OPENING) -->
+    <div id="splash-modal" class="modal-content glass-panel splash-modal" style="display: none;">
+      <div id="splash-icon" class="splash-icon-glow">🎁</div>
+      <h3 id="splash-title" class="splash-title">Recompensa Desbloqueada!</h3>
+      <div id="splash-reward-text" class="splash-reward-text">Você pode assistir 1 episódio de série.</div>
+      <button id="btn-close-splash" class="glass-btn primary">Continuar Jornada ⚔️</button>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
