@@ -1,58 +1,45 @@
-# 🌌 DopaStudy: Gamified Study RPG
+# 🌌 DopaStudy: Gamified Study RPG (v2.0.0)
 
 O **DopaStudy** é uma aplicação web SPA (Single Page Application) projetada para transformar sessões de estudo desgastantes em uma campanha de RPG implacável contra a procrastinação. Vinculando o tempo de foco a mecânicas extremas de liberação de dopamina, o projeto substitui cronômetros entediantes por uma interface imersiva onde focar no mundo real significa estraçalhar monstros no mundo virtual.
 
-O projeto utiliza uma arquitetura limpa de **estado centralizado** e **persistência local**, rodando inteiramente no lado do cliente sem a necessidade de frameworks ou dependências externas.
+A **Build v2.0.0 (Cloud Edition)** eleva o projeto para o nível de produção, introduzindo uma arquitetura de persistência híbrida em nuvem, novos motores de combate infinito, balanceamento preciso de dificuldade e travas rígidas de interface contra exploits.
 
 ---
 
-## 🕹️ Funcionalidades Principais
+## 🕹️ Novidades e Funcionalidades da Versão 2.0.0
 
-### ⚔️ Motor de Combate e Foco em Tempo Real
-* **Vínculo com Matérias Reais:** Digite o projeto ou matéria atual (ex: *Estudar Algoritmos*) para materializar um monstro customizado na hora.
-* **Dano Contínuo por Segundo (DPS):** O timer não é apenas um contador; cada segundo focado desconta vida do monstro com base no seu status efetivo de Foco (FOC).
-* **Spawn Dinâmico (Mid-Timer):** Se a sua força for devastadora e o monstro morrer antes do Pomodoro acabar, os espólios são entregues e o próximo monstro surge imediatamente para o combate continuar sem pausar o seu estudo.
+### ⚔️ Motor de Combate Infinito & Spawn Dinâmico
+* **Progressão por Tiers:** Enfrente uma fila interminável de criaturas geradas dinamicamente. Ao estraçalhar o clássico *Slime*, a engine invoca automaticamente o próximo monstro da masmorra, escalando o HP máximo e renderizando emojis temáticos obrigatórios (👾, 👹, 🐉, 👻) sem quebrar o loop visual ou deixar a tela vazia.
+* **Dificuldade Balanceada (Hardcore):** O jogo foi reequilibrado para valorizar o esforço real. O cálculo de DPS (Dano por Segundo) foi reduzido globalmente em **30%** (`Dano = Dano_Base * 0.7`), tornando os monstros de Tiers mais altos verdadeiros desafios de resistência ao tempo de foco.
 
-### 🔥 Mecânicas de Dopamina Extrema
-* **Combo Fire (🔥):** Concluir blocos de foco consecutivos ativa o multiplicador de combo. Alcançar Combo x2 ou mais injeta uma pulsação de chamas neon nas bordas de toda a aplicação. Desistir ou falhar reseta o contador.
-* **Ataques Críticos Sincronizados:** A cada 5 minutos de foco ininterrupto, o motor dispara um golpe massivo (15x dano), um efeito sonoro de impacto agudo e dropa ouro flutuante (`+5 GP 🪙`) que flutua e esmaece na tela.
-* **Gacha: Baú do Conhecimento Lendário:** Uma mecânica de sorte probabilística por ouro. Abra o baú para desbloquear Poções de XP, títulos honoríficos raros ou o visual místico **Modo Deus** (10% de chance), que envolve o avatar do jogador em uma aura de fogo dourado animado.
+### 📋 Painel de Missões Automáticas (Anti-Cheat)
+* **Travamento de Interface:** Acabou a bagunça de marcar e desmarcar tarefas para trapacear ouro. Todos os checkboxes de Missões Diárias e Semanais são estáticos e trancados (`disabled`) para clique direto do usuário.
+* **Validação Nativa:** O próprio código do jogo monitora seu progresso e valida quando os requisitos numéricos de estudo são atingidos. A recompensa (XP/GP) é injetada de forma 100% automática e síncrona pelo sistema assim que você conclui um ciclo legítimo de foco.
 
-### 🛡️ Inventário Avançado e Passivas Reais (Tiers de Loja)
-Os equipamentos não alteram apenas números abstratos; eles oferecem modificadores reais para mudar o ritmo da campanha:
-* **Tier 1 (Entrada):** *Óculos Cyber-Visão HUD* 🕶️ (+ Chance de acerto crítico).
-* **Tier 2 (Avançado):** *Catana de Plasma Cyberpunk* 🗡️ (+25% de Dano por Segundo real) e *Jaqueta de Couro Synthwave* 🧥 (Proteção: reduz em 50% as penalidades de XP/Ouro por falhas ou desistências).
-* **Tier 3 (Lendário):** *Drone Auxiliar de IA Suprema* 🛸 (+Status massivos, bônus de ouro por segundo e 15% de desconto vitalício na loja de Gacha).
-
-### 🧪 Alquimia e Buffs Temporários
-* Compre elixires de **XP Duplo** ou **Dano Duplo**.
-* O tempo dos elixires (ex: 15 minutos) é consumido segundo a segundo **apenas enquanto o timer de foco estiver ativo**, exibindo badges neon com cronômetros regressivos estilizados na interface.
+### 🛡️ Loja Épica e Engine de Equipamentos Refatorada
+* **Dedução Segura de Ouro:** Correção estrutural na validação da carteira. Todo o ouro do jogador e os custos dos itens da loja são sanitizados rigorosamente através da função `Number()`, eliminando bugs de "ouro insuficiente" causados por comparações de texto e garantindo preços dinâmicos baseados nas propriedades reais dos itens.
+* **Visualizador de Itens Ativos:** O inventário ganhou uma interface premium. Ao equipar armas, jaquetas ou acessórios, o card do item recebe uma borda neon dourada e a insígnia **"EQUIPADO"**, aplicando instantaneamente os modificadores de atributos e mudando os slots de equipamento ativo na Aba do Herói.
+* **Bordas Neon e Skins Dinâmicas:** Sistema de customização de perfil totalmente reconstruído. Ao ativar skins raras (como *Vaporwave Pink*, *Cyberpunk* ou *God Mode*), o sistema faz uma limpeza iterativa de classes antigas e injeta as bordas de gradiente animado corretas no contêiner principal do card (`#char-card`).
 
 ---
 
-## 🛠️ Stack Tecnológica
+## 🛠️ Stack Tecnológica Atualizada
 
-O projeto foi construído seguindo a filosofia de zero dependências externas (*Vanilla Stack*), garantindo performance instantânea e facilidade de customização:
+O projeto expandiu sua infraestrutura para suportar salvamento multiplataforma sem perder a velocidade de resposta original:
 
-* **HTML5 Semântico:** Estruturação limpa baseada em componentes de interface acessíveis.
-* **CSS3 Avançado:** Layout totalmente construído em *Flexbox/Grid Layout*, interface rica em *Glassmorphism* (efeitos de desfoque de fundo e translucidez), variáveis nativas para controle de temas neon e animações customizadas (`@keyframes`) para elementos flutuantes e auras.
-* **JavaScript Vanilla (ES6):**
-  * Engine de estado centralizado (`App.state`) impedindo mutações colaterais.
-  * Sistema de cálculo dinâmico de atributos em runtime (`getEffectiveStats()`) para blindar o salvamento de dados.
-  * Persistência local integral com o navegador via `LocalStorage` com rotinas de higienização de dados antigos.
-* **Web Audio API:** Sintetizador de áudio procedural que gera efeitos sonoros digitais, cliques, arpejos de level-up e impactos diretamente nas frequências do navegador, sem carregar um único arquivo `.mp3` pesado.
+* **HTML5 Semântico & CSS3 Avançado:** Interface baseada em *Glassmorphism*, variáveis nativas de controle de temas neon, layouts em *Flexbox/Grid Layout* e animações customizadas via `@keyframes`.
+* **JavaScript Vanilla (ES6+):** Engine orientada a objetos gerenciando loops de clock (`tick()`), listeners isolados de eventos, limpezas automáticas de classes no DOM e cálculo dinâmico de atributos em runtime (`getEffectiveStats()`).
+* **Supabase Client SDK:** Integração com banco de dados relacional PostgreSQL na nuvem para autenticação de usuários, gerenciamento de contas de aventureiros e salvamento remoto de dados.
+* **Estratégia de Persistência Híbrida (Cloud + Cache):** 1. `LocalStorage`: Atua como cache local ultra-rápido garantindo **zero latência** nas transações de ouro e dano durante o gameplay.
+  2. `Supabase (dopastudy_profiles)`: Sincronização assíncrona em background que atua como a fonte da verdade na nuvem. O jogo nunca trava aguardando requisições de rede.
 
 ---
 
 ## 🚀 Como Executar Localmente
 
-Como o projeto não requer compiladores ou gerenciadores de pacotes, você pode rodá-lo localmente de duas formas simples:
+### 1. Clonar e Configurar as Variáveis de Nuvem
+Clone o repositório e abra o arquivo `app.js` para inserir as credenciais do seu painel do Supabase (Project Settings → API):
 
-### Opção 1: Direto no Navegador
-Basta clonar o repositório e dar duplo clique no arquivo `index.html`.
-
-### Opção 2: Via Servidor Local (Recomendado para persistência limpa)
-Se você estiver no Linux ou macOS, abra o terminal na pasta do projeto e execute o servidor nativo do Python:
-
-```bash
-python3 -m http.server 8000
+```javascript
+const SUPABASE_URL = 'SUA_URL_DO_SUPABASE';
+const SUPABASE_ANON = 'SUA_CHAVE_ANON_DO_SUPABASE';
