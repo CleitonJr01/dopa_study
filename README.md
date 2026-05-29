@@ -45,5 +45,5 @@ O projeto expandiu sua infraestrutura para suportar salvamento multiplataforma s
 ### 1. Clonar e Configurar as Variáveis de Nuvem
 Clone o repositório para a sua máquina local:
 ```bash
-git clone [https://github.com/SEU_USUARIO/dopa-study.git](https://github.com/SEU_USUARIO/dopa-study.git)
+git clone [https://github.com/CleitonJr01/dopa_study.git](https://github.com/SEU_USUARIO/dopa-study.git)
 cd dopa-study
