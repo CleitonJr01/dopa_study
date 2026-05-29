@@ -318,12 +318,20 @@ const EpicCampaignChain = [
   { stage: 10, name: 'Arquimago do DopaStudy', desc: 'Alcançar o Nível 10 no DopaStudy', xp: 2000, gold: 1000, evalType: 'level', target: 10 }
 ];
 
-const Monsters = [
-  { name: 'Slime da Procrastinação', emoji: '🟢', baseHp: 35, scale: 1.0 },
-  { name: 'Duende das Notificações', emoji: '👺', baseHp: 50, scale: 1.15 },
-  { name: 'Espectro do Feed Infinito', emoji: '👻', baseHp: 70, scale: 1.3 },
-  { name: 'Gorgona dos Vídeos Curtos', emoji: '🐍', baseHp: 90, scale: 1.5 },
-  { name: 'Dragão dos Prazos Perdidos', emoji: '🐉', baseHp: 130, scale: 1.8 }
+const MONSTER_BASES = [
+  { name: 'Slime da Procrastinação', emoji: '🟢' },
+  { name: 'Duende das Notificações', emoji: '👺' },
+  { name: 'Espectro do Feed Infinito', emoji: '👻' },
+  { name: 'Gorgona dos Vídeos Curtos', emoji: '🐍' },
+  { name: 'Bug de Sintaxe Espacial', emoji: '👾' },
+  { name: 'Monstro dos Prazos Apertados', emoji: '⏳' }
+];
+
+const BOSS_BASES = [
+  { name: 'Dragão dos Prazos Perdidos', emoji: '🐉' },
+  { name: 'Lorde do Hiper-Foco Perdido', emoji: '👿' },
+  { name: 'Imperador da Distração', emoji: '👑' },
+  { name: 'Leviatã das Abas Abertas', emoji: '🐙' }
 ];
 
 // ==========================================================================
@@ -568,6 +576,23 @@ const App = {
     if (!this.state.activeBuffs) this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
     if (this.state.character.campaignStage === undefined) this.state.character.campaignStage = 1;
 
+    // Garante que as recompensas do sistema tenham sempre o custo correto exato
+    const systemRewardCosts = { r1: 40, r2: 60, r3: 100, r4: 150 };
+    if (this.state.customRewards) {
+      this.state.customRewards.forEach(r => {
+        if (r.isSystem && systemRewardCosts[r.id] !== undefined) {
+          r.cost = systemRewardCosts[r.id];
+        }
+      });
+    } else {
+      this.state.customRewards = [
+        { id: 'r1', name: 'Pausa para Redes Sociais', desc: 'Liberado: Navegar 10 minutos livremente', cost: 40, isSystem: true },
+        { id: 'r2', name: 'Chocolate / Café Premium', desc: 'Desbloqueia: Comer um doce ou café gourmet', cost: 60, isSystem: true },
+        { id: 'r3', name: 'Episódio de Série', desc: 'Assistir a 1 episódio de série ou anime', cost: 100, isSystem: true },
+        { id: 'r4', name: 'Jogar Videogame (30m)', desc: 'Desbloqueia 30 minutos de gameplay relaxante', cost: 150, isSystem: true }
+      ];
+    }
+
     // Converte saves antigos para o novo sistema dinâmico de missões
     if (!this.state.quests || this.state.quests.length === 0 || !this.state.quests.some(q => q.type === 'campaign')) {
       this.state.quests = [];
@@ -589,7 +614,7 @@ const App = {
     for (let i = 0; i < 3 && pool.length > 0; i++) {
       const idx = Math.floor(Math.random() * pool.length);
       const q = pool.splice(idx, 1)[0];
-      selected.push({
+      const quest = {
         id: `d_gen_${Date.now()}_${i}`,
         type: 'daily',
         name: q.name,
@@ -598,7 +623,14 @@ const App = {
         gold: q.gold,
         completed: false,
         isSystem: true
-      });
+      };
+      // Preserva trackingType e target para missões automáticas
+      if (q.trackingType) {
+        quest.trackingType = q.trackingType;
+        quest.target = q.target;
+        quest.progress = 0;
+      }
+      selected.push(quest);
     }
     this.state.quests = this.state.quests.filter(q => q.type !== 'daily');
     this.state.quests.push(...selected);
@@ -840,26 +872,70 @@ const App = {
   // ==========================================================================
   // MONSTROS E BORDAS DE RPG
   // ==========================================================================
-  spawnMonster() {
+  generateMonster(tier, index) {
+    const t = (typeof tier === 'number' && !isNaN(tier)) ? tier : 1;
+    const idx = (typeof index === 'number' && !isNaN(index)) ? index : 1;
+
     const level = this.state.character.level;
-    const monsterBase = Monsters[Math.floor(Math.random() * Monsters.length)];
+    const levelMult = 1 + (level - 1) * 0.15;
 
-    // Inimigos começam fracos e ficam progressivamente mais fortes com o tempo na mesma sessão!
-    const sessionDefeats = this.sessionMonsterDefeats || 0;
-    const sessionScaling = 1 + sessionDefeats * 0.25;
-    const levelMult = (1 + (level - 1) * 0.15) * sessionScaling;
-    const maxHp = Math.floor(monsterBase.baseHp * monsterBase.scale * levelMult);
+    let baseName = '';
+    let emoji = '';
+    const isBoss = (idx === 7);
 
-    this.activeMonster = {
-      name: monsterBase.name,
-      emoji: monsterBase.emoji,
+    // Arrays de Emojis temáticos robustos
+    const monsterEmojis = ['👾', '👹', '👻', '🐍', '👽', '💀', '🤖', '👺', '🕷️', '🧟'];
+    const bossEmojis = ['🐉', '👿', '👑', '🐙', '😈', '🦁', '🦉', '🌋'];
+
+    if (isBoss) {
+      const base = BOSS_BASES[(t - 1) % BOSS_BASES.length];
+      baseName = base ? `${base.name} [CHEFE T${t}]` : `Monstro Chefe Supremo [CHEFE T${t}]`;
+      emoji = (base && base.emoji) ? base.emoji : bossEmojis[(t - 1) % bossEmojis.length];
+    } else {
+      const base = MONSTER_BASES[(idx - 1) % MONSTER_BASES.length];
+      baseName = base ? `${base.name} [T${t}]` : `Inimigo de Foco [T${t}]`;
+      emoji = (base && base.emoji) ? base.emoji : monsterEmojis[(idx - 1) % monsterEmojis.length];
+    }
+
+    // Fallback absoluto de segurança para garantir que todo inimigo receba um emoji válido
+    if (!emoji) {
+      emoji = isBoss ? bossEmojis[(t - 1) % bossEmojis.length] : monsterEmojis[(idx - 1) % monsterEmojis.length];
+    }
+
+    // HP Scaling
+    const indexHpMult = isBoss ? 8.0 : Math.pow(1.3, idx - 1);
+    const tierHpMult = Math.pow(2.0, t - 1);
+    const maxHp = Math.max(30, Math.floor(40 * indexHpMult * tierHpMult * levelMult));
+
+    // Reward Scaling
+    const indexXpMult = isBoss ? 6.0 : Math.pow(1.25, idx - 1);
+    const indexGoldMult = isBoss ? 5.0 : Math.pow(1.20, idx - 1);
+    const tierRewardMult = Math.pow(1.8, t - 1);
+    
+    const xpReward = Math.max(5, Math.floor(5 * indexXpMult * tierRewardMult * levelMult));
+    const goldReward = Math.max(3, Math.floor(3 * indexGoldMult * tierRewardMult * levelMult));
+
+    return {
+      name: baseName,
+      emoji: emoji,
       maxHp: maxHp,
       hp: maxHp,
-      xpReward: Math.floor(25 * monsterBase.scale * levelMult),
-      goldReward: Math.floor(15 * monsterBase.scale * levelMult),
-      level: level + sessionDefeats
+      xpReward: xpReward,
+      goldReward: goldReward,
+      level: level + t - 1,
+      tier: t,
+      index: idx,
+      isBoss: isBoss
     };
+  },
 
+  spawnMonster(tier = 1, index = 1) {
+    this.activeMonster = this.generateMonster(tier, index);
+    // Reseta o sprite para a classe idle, removendo a classe 'dead' da animação de morte
+    const sprite = document.getElementById('monster-sprite');
+    if (sprite) {
+      sprite.className = 'monster-sprite idle';
+    }
     this.renderMonster();
   },
 
@@ -872,7 +948,7 @@ const App = {
     return this.activeMonster.name;
   },
 
-  // Morte do monstro a meio do cronômetro (continua sem parar)
+  // Morte do monstro a meio do cronômetro — dá recompensas e spawna o próximo na fila da Raid
   defeatMonsterMidTimer() {
     AudioSynth.playMonsterDefeated();
 
@@ -885,17 +961,22 @@ const App = {
     this.addXp(xpGained);
     this.addGold(goldGained);
 
+    // Acumula para o resumo final
+    this.raidTotalXp = (this.raidTotalXp || 0) + xpGained;
+    this.raidTotalGold = (this.raidTotalGold || 0) + goldGained;
+    this.raidMonstersDefeated = (this.raidMonstersDefeated || 0) + 1;
+
     const displayName = this.getMonsterDisplayName();
     const buffSuffix = doubleXpMultiplier > 1 ? " [XP DUPLO ATIVO! 🧪]" : "";
     this.addLog(`👾 Derrotaste o ${displayName}! +${xpGained} XP${buffSuffix} e +${goldGained} GP! (Combo x${this.state.focusCombo} 🔥)`, "victory");
 
     this.state.analytics.monstersDefeated += 1;
-    this.sessionMonsterDefeats = (this.sessionMonsterDefeats || 0) + 1;
-
-    // Dispara progresso das novas missões
     this.triggerWeeklyProgress('monsters_defeated', 1);
     this.triggerWeeklyProgress('monster_damage', this.activeMonster.maxHp);
-    this.checkCampaignQuests();
+    this.triggerDailyProgress('monsters_defeated', 1);
+
+    // Avaliação centralizada de TODAS as missões (anti-cheat)
+    this.checkAndTriggerQuests();
 
     // Animação visual de morte
     const sprite = document.getElementById('monster-sprite');
@@ -903,13 +984,25 @@ const App = {
       sprite.className = 'monster-sprite dead';
     }
 
+    this.showFloatingText(`+${goldGained} GP 🪙`, 'floating-loot');
     this.saveState();
 
-    // Traz novo monstro automaticamente (será mais forte devido ao sessionMonsterDefeats!)
+    // Avança na fila da Raid: próximo index, ou próximo Tier se index > 7
+    const currentTier = this.activeMonster.tier || 1;
+    const currentIndex = this.activeMonster.index || 1;
+    let nextIndex = currentIndex + 1;
+    let nextTier = currentTier;
+    if (nextIndex > 7) {
+      nextTier++;
+      nextIndex = 1;
+    }
+
+    // Traz o próximo monstro da fila
     setTimeout(() => {
-      this.spawnMonster();
+      this.spawnMonster(nextTier, nextIndex);
     }, 800);
   },
+
 
   // ==========================================================================
   // MECÂNICA DO TIMER POMODORO
@@ -986,20 +1079,15 @@ const App = {
     document.getElementById('timer-reset').disabled = false;
 
     if (this.timer.mode === 'focus') {
-      this.continuousFocusTicks = 0; // Reinicia o contador contínuo
+      this.continuousFocusTicks = 0;
+      this.raidTotalXp = 0;
+      this.raidTotalGold = 0;
+      this.raidMonstersDefeated = 0;
 
-      // Ajusta o HP do monstro para a duração
-      const stats = this.getEffectiveStats();
-      const dps = 1 + stats.foc * 0.05;
-      this.activeMonster.maxHp = Math.ceil(this.timer.duration * dps);
-      this.activeMonster.hp = this.activeMonster.maxHp;
-      this.activeMonster.xpReward = Math.floor(25 * (this.timer.duration / 1500) * this.state.character.level);
-      this.activeMonster.goldReward = Math.floor(15 * (this.timer.duration / 1500) * this.state.character.level);
-
-      this.renderMonster();
+      this.spawnMonster(1, 1); // Começa obrigatoriamente no Tier 1, Monstro 1
 
       const displayName = this.getMonsterDisplayName();
-      this.addLog(`⚔️ Combate iniciado contra o ${displayName}! Mantém o foco!`, "info");
+      this.addLog(`⚔️ Raid iniciada! Derrote o maior número de monstros com seu foco!`, "info");
 
       const sprite = document.getElementById('monster-sprite');
       if (sprite) sprite.className = 'monster-sprite idle';
@@ -1137,7 +1225,7 @@ const App = {
     this.spawnMonster();
   },
 
-  // Loop de contagem regressiva com dano contínuo corrigido
+  // Loop de contagem regressiva com dano contínuo
   tick() {
     try {
       if (this.timer.timeLeft > 0) {
@@ -1151,7 +1239,6 @@ const App = {
             if (this.state.activeBuffs.doubleDamage > 0) this.state.activeBuffs.doubleDamage--;
             this.renderBuffsTimeline();
 
-            // Re-renderiza loja se visível para atualizar o tempo ativo restante
             const skinShopTab = document.getElementById('tab-skin-shop');
             if (skinShopTab && skinShopTab.classList.contains('active')) {
               this.renderEpicShop();
@@ -1161,23 +1248,24 @@ const App = {
           // Incrementa contador contínuo
           this.continuousFocusTicks++;
 
-          // CÁLCULO DE DANO: Dano Efetivo = (FOC Efetivo * Passiva da Arma) * (doubleDamage > 0 ? 2 : 1)
+          // CÁLCULO DE DANO
           const stats = this.getEffectiveStats();
           const weaponPassiva = (this.state.character.equipment && this.state.character.equipment.weapon === 'eq-catana') ? 1.25 : 1.0;
           const doubleDamageMult = (this.state.activeBuffs && this.state.activeBuffs.doubleDamage > 0) ? 2 : 1;
-          const dps = (stats.foc * weaponPassiva) * doubleDamageMult;
+          const dps = ((stats.foc * weaponPassiva) * doubleDamageMult) * 0.7;
 
+          // Dano direto no HP do monstro ativo
           this.activeMonster.hp = Math.max(0, this.activeMonster.hp - dps);
           this.renderMonster();
 
-          // PASSIVA DO DRONE: +2 GP a cada tick e floatUp text
+          // PASSIVA DO DRONE
           const hasDrone = this.state.character.equipment && this.state.character.equipment.accessory === 'eq-drone';
           if (hasDrone) {
             this.addGold(2);
             this.showFloatingText('+2 GP 🪙', 'floating-loot');
           }
 
-          // PASSIVA DOS ÓCULOS HUD: Aumenta em +5% a chance de acerto crítico a cada tick do timer
+          // PASSIVA DOS ÓCULOS HUD
           const hasOculos = this.state.character.equipment && this.state.character.equipment.accessory === 'eq-oculos';
           const critChance = hasOculos ? 0.05 : 0;
           if (Math.random() < critChance) {
@@ -1197,7 +1285,7 @@ const App = {
             }
           }
 
-          // Dispara Ataque Crítico a cada 5 minutos (300 ticks) de foco ininterrupto
+          // Dispara Ataque Crítico a cada 5 minutos (300 ticks)
           if (this.continuousFocusTicks > 0 && this.continuousFocusTicks % 300 === 0) {
             this.triggerCriticalAttack(dps);
           }
@@ -1208,7 +1296,6 @@ const App = {
           }
         }
       } else {
-        // Concluiu sessão com sucesso
         this.completeTimerSession();
       }
     } catch (e) {
@@ -1216,7 +1303,7 @@ const App = {
     }
   },
 
-  // Executa ataque crítico a cada 5 minutos de foco ininterrupto
+  // Ataque crítico direto no monstro
   triggerCriticalAttack(normalDps) {
     AudioSynth.playCriticalHit();
 
@@ -1224,13 +1311,11 @@ const App = {
     this.activeMonster.hp = Math.max(0, this.activeMonster.hp - critDamage);
     this.renderMonster();
 
-    // Dá ouro imediato
     this.addGold(5);
 
     const displayName = this.getMonsterDisplayName();
-    this.addLog(`💥 ATAQUE CRÍTICO! Causaste ${Math.round(critDamage)} de dano massivo no ${displayName} por manteres foco estável! +5 GP!`, "damage");
-
-    this.showFloatingText('+5 GP 🪙', 'floating-loot');
+    this.addLog(`💥 ATAQUE CRÍTICO! Causaste ${Math.round(critDamage)} de dano massivo no ${displayName}! +5 GP!`, "damage");
+    this.showFloatingText('💥 CRÍTICO! +5 GP', 'floating-loot');
   },
 
   showFloatingText(text, className = 'floating-loot') {
@@ -1254,7 +1339,7 @@ const App = {
   completeTimerSession() {
     clearInterval(this.timer.intervalId);
     this.timer.intervalId = null;
-    this.continuousFocusTicks = 0; // Reinicia contador
+    this.continuousFocusTicks = 0;
 
     if (this.timer.mode === 'focus') {
       const focusMinutes = Math.round(this.timer.duration / 60);
@@ -1267,7 +1352,7 @@ const App = {
       // Histórico analítico
       this.addFocusAnalytics(focusMinutes);
 
-      // Se ainda sobrou HP, liquida o monstro
+      // Se ainda sobrou HP no monstro ativo, liquida-o como bônus de conclusão
       if (this.activeMonster.hp > 0) {
         this.activeMonster.hp = 0;
         this.renderMonster();
@@ -1277,7 +1362,29 @@ const App = {
       this.addLog(`🎉 Ciclo de Foco de ${focusMinutes}m completado! Foco estável.`, "victory");
       this.incrementStreak();
 
-      // Reseta derrotas do monstro ao fim da sessão com sucesso
+      // Mostra resumo da Raid
+      const totalMonstersDefeated = this.raidMonstersDefeated || 0;
+      const totalXp = this.raidTotalXp || 0;
+      const totalGold = this.raidTotalGold || 0;
+      const lastMonsterName = this.activeMonster ? this.activeMonster.name : 'Desconhecido';
+
+      if (totalMonstersDefeated > 0) {
+        this.showSplash(
+          `Raid Concluída! 🏆`,
+          `Sua sessão de foco de <strong>${focusMinutes} minutos</strong> foi um sucesso!<br><br>` +
+          `Monstros Derrotados: <strong>${totalMonstersDefeated}</strong>.<br>` +
+          `Último monstro alcançado: <strong>${lastMonsterName}</strong>.<br><br>` +
+          `✨ Recompensas Acumuladas:<br>` +
+          `🎁 XP Total: <strong>+${totalXp} XP</strong>.<br>` +
+          `🪙 Ouro Total: <strong>+${totalGold} GP</strong>.`,
+          "⚔️"
+        );
+      }
+
+      // Reseta contadores da raid
+      this.raidTotalXp = 0;
+      this.raidTotalGold = 0;
+      this.raidMonstersDefeated = 0;
       this.sessionMonsterDefeats = 0;
 
       // Dispara missões diárias e semanais
@@ -1286,7 +1393,9 @@ const App = {
       const minutesToday = this.state.analytics.dailyFocusHistory[todayKey] || 0;
       this.triggerDailyProgress('focus_minutes_today', minutesToday);
       this.triggerWeeklyProgress('combo', this.state.focusCombo);
-      this.checkCampaignQuests();
+
+      // Avaliação centralizada de TODAS as missões (anti-cheat)
+      this.checkAndTriggerQuests();
 
       this.saveState();
       this.resetTimerState();
@@ -1295,8 +1404,10 @@ const App = {
       AudioSynth.playQuestComplete();
       this.addLog(`💪 Intervalo concluído! Retornando ao combate de foco.`, "info");
 
-      // Dispara missão diária de descanso saudável
       this.triggerDailyProgress('break_completed', 1);
+
+      // Avaliação centralizada de TODAS as missões (anti-cheat)
+      this.checkAndTriggerQuests();
 
       this.resetTimerState();
       this.setTimerMode('focus');
@@ -1437,38 +1548,86 @@ const App = {
     this.addLog(`🗑️ Missão removida.`, "info");
   },
 
-  toggleQuest(id, checked) {
-    const quest = this.state.quests.find(q => q.id === id);
-    if (!quest) return;
+  // ==========================================================================
+  // SISTEMA ANTI-CHEAT: Avaliação Centralizada Automática de TODAS as Missões
+  // ==========================================================================
+  // Esta função é chamada automaticamente pelo sistema após eventos válidos do jogo
+  // (fim de ciclo de foco, derrota de monstro, compra de item, etc.).
+  // Nenhum checkbox é clicável manualmente.
+  checkAndTriggerQuests() {
+    let changed = false;
+    const todayKey = this.formatDateKey(new Date());
+    const minutesToday = this.state.analytics.dailyFocusHistory[todayKey] || 0;
 
-    // Bloqueia marcação manual para missões semanais ou de campanha automáticas
-    if (quest.type === 'weekly' || quest.id.startsWith('c')) {
-      AudioSynth.playWarning();
-      this.addLog(`⚠️ Missão automática! Complete os objetivos no timer/nível para liberá-la.`, "penalty");
+    this.state.quests.forEach(q => {
+      if (q.completed) return; // Já concluída, ignora
+
+      // --- MISSÕES DIÁRIAS com trackingType automático ---
+      if (q.type === 'daily' && q.trackingType && q.target) {
+        let currentValue = 0;
+        switch (q.trackingType) {
+          case 'focus_session_completed':
+            // Progresso já é incrementado por triggerDailyProgress
+            currentValue = q.progress || 0;
+            break;
+          case 'monsters_defeated':
+            currentValue = q.progress || 0;
+            break;
+          case 'break_completed':
+            currentValue = q.progress || 0;
+            break;
+          case 'focus_minutes_today':
+            q.progress = Math.min(q.target, minutesToday);
+            currentValue = q.progress;
+            changed = true;
+            break;
+          case 'combo':
+            q.progress = Math.min(q.target, this.state.focusCombo);
+            currentValue = q.progress;
+            changed = true;
+            break;
+          default:
+            currentValue = q.progress || 0;
+        }
+
+        if (currentValue >= q.target && !q.completed) {
+          q.completed = true;
+          AudioSynth.playQuestComplete();
+          this.addXp(q.xp);
+          this.addGold(q.gold);
+          this.addLog(`✅ Missão Diária concluída: "${q.name}"! +${q.xp} XP e +${q.gold} GP.`, "victory");
+          changed = true;
+        }
+      }
+
+      // --- MISSÕES SEMANAIS com trackingType automático ---
+      if (q.type === 'weekly' && q.trackingType && q.target) {
+        let currentValue = q.progress || 0;
+
+        // Atualiza progresso de tipos cumulativos baseados no estado global
+        if (q.trackingType === 'combo') {
+          q.progress = Math.min(q.target, this.state.focusCombo);
+          currentValue = q.progress;
+          changed = true;
+        }
+
+        if (currentValue >= q.target && !q.completed) {
+          q.completed = true;
+          AudioSynth.playQuestComplete();
+          this.addXp(q.xp);
+          this.addGold(q.gold);
+          this.addLog(`✅ Missão Semanal concluída: "${q.name}"! +${q.xp} XP e +${q.gold} GP.`, "victory");
+          changed = true;
+        }
+      }
+    });
+
+    // Verifica também a Campanha Épica
+    this.checkCampaignQuests();
+
+    if (changed) {
       this.renderQuests();
-      return;
-    }
-
-    if (checked && !quest.completed) {
-      quest.completed = true;
-      AudioSynth.playQuestComplete();
-
-      this.addXp(quest.xp);
-      this.addGold(quest.gold);
-
-      this.addLog(`✅ Missão completada: "${quest.name}"! +${quest.xp} XP e +${quest.gold} GP.`, "victory");
       this.saveState();
-
-      setTimeout(() => {
-        this.renderQuests();
-      }, 500);
-    } else if (!checked && quest.completed) {
-      quest.completed = false;
-      this.removeXp(quest.xp);
-      this.state.character.gold = Math.max(0, this.state.character.gold - quest.gold);
-      this.renderGold();
-      this.saveState();
-      this.renderQuests();
     }
   },
 
@@ -2064,16 +2223,33 @@ const App = {
 
   renderMonster() {
     const displayName = this.getMonsterDisplayName();
-    document.getElementById('monster-name').textContent = displayName;
-    document.getElementById('monster-level').textContent = `Nível ${this.activeMonster.level}`;
-    document.getElementById('monster-sprite').textContent = this.activeMonster.emoji;
+    const nameEl = document.getElementById('monster-name');
+    const levelEl = document.getElementById('monster-level');
+    const spriteEl = document.getElementById('monster-sprite');
+    const hpTextEl = document.getElementById('monster-hp-text');
+    const hpFillEl = document.getElementById('monster-hp-fill');
+    const xpEl = document.getElementById('monster-reward-xp');
+    const goldEl = document.getElementById('monster-reward-gold');
 
-    const hpPercent = Math.min(100, (this.activeMonster.hp / this.activeMonster.maxHp) * 100);
-    document.getElementById('monster-hp-text').textContent = `${Math.ceil(this.activeMonster.hp)} / ${this.activeMonster.maxHp} HP`;
-    document.getElementById('monster-hp-fill').style.width = `${hpPercent}%`;
+    if (!nameEl || !spriteEl) return; // Guard contra elementos inexistentes
 
-    document.getElementById('monster-reward-xp').textContent = this.activeMonster.xpReward;
-    document.getElementById('monster-reward-gold').textContent = this.activeMonster.goldReward;
+    nameEl.textContent = displayName;
+    levelEl.textContent = `Nível ${this.activeMonster.level}`;
+    spriteEl.textContent = this.activeMonster.emoji || '👾';
+
+    // Garante que o sprite esteja visível (reseta classe 'dead' caso renderMonster seja chamado após spawn)
+    if (spriteEl.classList.contains('dead')) {
+      spriteEl.className = 'monster-sprite idle';
+    }
+
+    const hpPercent = (this.activeMonster.maxHp > 0)
+      ? Math.min(100, (this.activeMonster.hp / this.activeMonster.maxHp) * 100)
+      : 0;
+    hpTextEl.textContent = `${Math.ceil(this.activeMonster.hp)} / ${this.activeMonster.maxHp} HP`;
+    hpFillEl.style.width = `${hpPercent}%`;
+
+    xpEl.textContent = this.activeMonster.xpReward;
+    goldEl.textContent = this.activeMonster.goldReward;
   },
 
   renderQuests() {
@@ -2096,7 +2272,7 @@ const App = {
       card.className = 'quest-card glass-panel';
       if (quest.completed) card.style.opacity = '0.75';
 
-      const isAuto = quest.type === 'weekly' || quest.id.startsWith('c') || (quest.type === 'daily' && quest.trackingType);
+
 
       let progressMarkup = '';
       if (quest.target && quest.target > 0) {
@@ -2117,7 +2293,7 @@ const App = {
 
       card.innerHTML = `
         <label class="quest-checkbox-label">
-          <input type="checkbox" class="quest-checkbox" data-id="${quest.id}" ${quest.completed ? 'checked' : ''} ${isAuto ? 'disabled style="cursor: not-allowed; opacity: 0.6;" title="Esta missão é avaliada automaticamente pelo sistema"' : ''}>
+          <input type="checkbox" class="quest-checkbox" data-id="${quest.id}" ${quest.completed ? 'checked' : ''} disabled style="cursor: not-allowed; opacity: 0.6;" title="As missões são avaliadas automaticamente pelo sistema">
           <div class="quest-details">
             <span class="quest-name-text">${quest.name}</span>
             <span class="quest-desc-text">${quest.desc}</span>
@@ -2485,15 +2661,44 @@ const App = {
     const customMinutesInput = document.getElementById('custom-minutes');
     if (customMinutesInput) {
       const updateCustomTime = () => {
-        if (!this.timer.intervalId && this.timer.mode === 'focus') {
+        if (!this.timer.intervalId) {
+          // Garante transição visual para o modo de foco ao interagir com o campo
+          this.timer.mode = 'focus';
+          
+          const modeBtnFocus = document.querySelector('[data-mode="focus"]');
+          const modeBtnShort = document.querySelector('[data-mode="short-break"]');
+          const modeBtnLong = document.querySelector('[data-mode="long-break"]');
+          if (modeBtnFocus && modeBtnShort && modeBtnLong) {
+            [modeBtnFocus, modeBtnShort, modeBtnLong].forEach(btn => btn.classList.remove('primary'));
+            modeBtnFocus.classList.add('primary');
+          }
+          
+          document.getElementById('timer-mode-label').textContent = "Foco ativo";
+          const progressCircle = document.getElementById('timer-progress');
+          if (progressCircle) {
+            progressCircle.classList.remove('break-mode');
+          }
+
           const val = parseInt(customMinutesInput.value) || 25;
           this.timer.duration = val * 60;
           this.timer.timeLeft = this.timer.duration;
+          this.timer.isCustom = true;
           this.renderTimerDisplay();
         }
       };
+
       customMinutesInput.addEventListener('input', updateCustomTime);
       customMinutesInput.addEventListener('change', updateCustomTime);
+
+      const handleQuickClick = () => {
+        if (customMinutesInput.value.trim() === '') {
+          customMinutesInput.value = '25';
+          updateCustomTime();
+        }
+      };
+
+      customMinutesInput.addEventListener('click', handleQuickClick);
+      customMinutesInput.addEventListener('focus', handleQuickClick);
     }
 
     // 4. Modos da Sub-Aba de Missões
@@ -2530,14 +2735,9 @@ const App = {
       });
     }
 
-    // 6. Checkbox de Conclusão de Missão
-    document.addEventListener('change', (e) => {
-      if (e.target.classList.contains('quest-checkbox')) {
-        const id = e.target.dataset.id;
-        const checked = e.target.checked;
-        this.toggleQuest(id, checked);
-      }
-    });
+    // 6. Checkbox de Missão — DESATIVADO (anti-cheat)
+    // Todos os checkboxes de missões são desabilitados no HTML.
+    // A conclusão é 100% automática via checkAndTriggerQuests().
 
     // Deletar Missão
     document.addEventListener('click', (e) => {

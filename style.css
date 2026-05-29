@@ -1224,6 +1224,19 @@ nav.nav-menu {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+.quest-checkbox:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+
+.quest-checkbox:disabled:hover {
+  border-color: var(--card-border) !important;
+}
+
+label:has(.quest-checkbox:disabled) {
+  cursor: not-allowed !important;
+}
+
 .quest-checkbox:checked {
   background: var(--accent-xp);
   border-color: var(--accent-xp);
