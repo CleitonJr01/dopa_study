@@ -6,6 +6,11 @@ A **Build v2.0.0 (Cloud Edition)** eleva o projeto para o nível de produção, 
 
 ---
 
+## 🎮 Jogue Agora (Live Demo)
+⚔️ **Acesse o link oficial do deploy na Vercel:** [https://dopa-study.vercel.app/](https://dopa-study.vercel.app/)
+
+---
+
 ## 🕹️ Novidades e Funcionalidades da Versão 2.0.0
 
 ### ⚔️ Motor de Combate Infinito & Spawn Dinâmico
@@ -34,12 +39,11 @@ O projeto expandiu sua infraestrutura para suportar salvamento multiplataforma s
   2. `Supabase (dopastudy_profiles)`: Sincronização assíncrona em background que atua como a fonte da verdade na nuvem. O jogo nunca trava aguardando requisições de rede.
 
 ---
-## Link: https://dopa-study.vercel.app/
+
 ## 🚀 Como Executar Localmente
 
 ### 1. Clonar e Configurar as Variáveis de Nuvem
-Clone o repositório e abra o arquivo `app.js` para inserir as credenciais do seu painel do Supabase (Project Settings → API):
-
-```javascript
-const SUPABASE_URL = 'SUA_URL_DO_SUPABASE';
-const SUPABASE_ANON = 'SUA_CHAVE_ANON_DO_SUPABASE';
+Clone o repositório para a sua máquina local:
+```bash
+git clone [https://github.com/SEU_USUARIO/dopa-study.git](https://github.com/SEU_USUARIO/dopa-study.git)
+cd dopa-study
