@@ -6,6 +6,8 @@
   <title>DopaStudy: Gamified Study RPG</title>
   <meta name="description" content="Transforme seus estudos em uma aventura RPG. Ganhe ouro, derrote monstros e troque por recompensas reais.">
   <link rel="stylesheet" href="style.css">
+  <!-- Supabase JS SDK via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 
@@ -88,8 +90,13 @@
         </a>
       </nav>
       
+      <!-- User info + logout (shown when logged in) -->
       <div class="sidebar-footer">
-        DopaStudy v1.1.0
+        <div id="user-info-bar" class="user-info-bar" style="display:none;">
+          <span id="user-email-display" class="user-email-display">usuario@email.com</span>
+          <button id="btn-logout" class="glass-btn danger btn-logout-small">⏏ Sair</button>
+        </div>
+        <div id="sidebar-version" class="sidebar-version">DopaStudy v2.0.0 ☁️</div>
       </div>
     </aside>
 
@@ -450,6 +457,59 @@
       <button id="btn-close-splash" class="glass-btn primary">Continuar Jornada ⚔️</button>
     </div>
 
+  </div>
+
+  <!-- ============================================================
+       AUTH SCREEN OVERLAY (shown when not authenticated)
+       ============================================================ -->
+  <div id="auth-screen" class="auth-screen">
+    <!-- Animated background particles -->
+    <div class="auth-bg-particles">
+      <div class="auth-particle"></div>
+      <div class="auth-particle"></div>
+      <div class="auth-particle"></div>
+      <div class="auth-particle"></div>
+      <div class="auth-particle"></div>
+    </div>
+
+    <div class="auth-panel glass-panel">
+      <!-- Logo / Title -->
+      <div class="auth-logo">
+        <div class="auth-logo-icon">🎮</div>
+        <h1 class="auth-title">DopaStudy</h1>
+        <p class="auth-subtitle">Gamified Study RPG ☁️ Online</p>
+      </div>
+
+      <!-- Auth Mode Tabs -->
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab-btn active" data-auth-mode="login">Entrar na Conta</button>
+        <button id="auth-tab-register" class="auth-tab-btn" data-auth-mode="register">Criar Nova Conta RPG</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="auth-form" class="auth-form" novalidate>
+        <div class="auth-field">
+          <label class="auth-label">📧 E-mail do Aventureiro</label>
+          <input type="email" id="auth-email" class="glass-input auth-input" placeholder="seuemail@exemplo.com" autocomplete="email" required>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">🔒 Senha Secreta</label>
+          <input type="password" id="auth-password" class="glass-input auth-input" placeholder="Mínimo 6 caracteres" autocomplete="current-password" required>
+        </div>
+
+        <!-- Error message -->
+        <div id="auth-error" class="auth-error" style="display:none;"></div>
+
+        <!-- Submit Button -->
+        <button type="submit" id="auth-submit" class="glass-btn primary auth-submit-btn">
+          <span id="auth-submit-text">▶ Entrar na Conta</span>
+          <span id="auth-loader" class="auth-loader" style="display:none;"></span>
+        </button>
+      </form>
+
+      <!-- Social proof / flavor text -->
+      <p class="auth-flavor">🌍 Conecte-se à nuvem. Salve seu progresso em qualquer dispositivo.</p>
+    </div>
   </div>
 
   <script src="app.js"></script>
