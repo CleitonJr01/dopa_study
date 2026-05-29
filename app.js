@@ -1,6 +1,117 @@
 /**
- * DopaStudy: Gamified Study RPG - Engine de Estado e Lógica Expansiva
+ * DopaStudy: Gamified Study RPG — Engine de Estado e Lógica Expansiva
+ * v2.0.0 — Online/Cloud Edition (Supabase Backend)
  */
+
+// ==========================================================================
+// 0. SUPABASE — Inicialização do cliente e módulo de autenticação
+// ==========================================================================
+
+// ⚠️ SUBSTITUA PELAS SUAS CREDENCIAIS DO PAINEL DO SUPABASE:
+//    Project Settings → API → Project URL e anon/public key
+const SUPABASE_URL = 'https://ljjwmlxvvvvowuacbdph.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_8a-Lm7giudR4EmgecsiWiA_LFxMiyRA';
+
+// Cria o cliente global Supabase (SDK carregado via CDN no index.html)
+const supabaseClient = (typeof supabase !== 'undefined')
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+  : null; // Fallback gracioso quando offline / sem CDN
+
+/**
+ * SupabaseAuth — Módulo de autenticação e sincronização de perfil na nuvem.
+ *
+ * Estratégia de Persistência Híbrida:
+ *  1. LocalStorage: cache local ultra-rápido (zero latência para o gameplay).
+ *  2. Supabase (dopastudy_profiles): source-of-truth na nuvem (sync assíncrono em background).
+ *  => O gameplay nunca trava aguardando a nuvem.
+ */
+const SupabaseAuth = {
+  currentUser: null,  // objeto { id, email } do usuário autenticado
+
+  /** Verifica sessão ativa ao carregar a página */
+  async getSession() {
+    if (!supabaseClient) return null;
+    const { data } = await supabaseClient.auth.getSession();
+    return data?.session?.user ?? null;
+  },
+
+  /** Login com e-mail e senha */
+  async signIn(email, password) {
+    if (!supabaseClient) throw new Error('Supabase não disponível. Verifique sua conexão.');
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    this.currentUser = data.user;
+    return data.user;
+  },
+
+  /** Registro de nova conta */
+  async signUp(email, password) {
+    if (!supabaseClient) throw new Error('Supabase não disponível. Verifique sua conexão.');
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    if (error) throw error;
+    this.currentUser = data.user;
+    return data.user;
+  },
+
+  /** Logout */
+  async signOut() {
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signOut();
+    this.currentUser = null;
+  },
+
+  /**
+   * Salva o estado do App na tabela 'dopastudy_profiles' (upsert).
+   * Fire-and-forget: não bloqueia a thread do gameplay.
+   */
+  async saveProfile(state) {
+    if (!supabaseClient || !this.currentUser) return;
+    try {
+      const { error } = await supabaseClient
+        .from('dopastudy_profiles')
+        .upsert({
+          user_id: this.currentUser.id,
+          updated_at: new Date().toISOString(),
+          state_json: state
+        }, { onConflict: 'user_id' });
+      if (error) console.warn('[SupabaseAuth] Erro ao salvar perfil na nuvem:', error.message);
+    } catch (e) {
+      console.warn('[SupabaseAuth] saveProfile falhou (offline?):', e.message);
+    }
+  },
+
+  /**
+   * Carrega o estado do App da tabela 'dopastudy_profiles'.
+   * Retorna null se não houver registro (novo herói).
+   */
+  async loadProfile() {
+    if (!supabaseClient || !this.currentUser) return null;
+    try {
+      const { data, error } = await supabaseClient
+        .from('dopastudy_profiles')
+        .select('state_json')
+        .eq('user_id', this.currentUser.id)
+        .single();
+      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+        console.warn('[SupabaseAuth] Erro ao carregar perfil:', error.message);
+        return null;
+      }
+      return data?.state_json ?? null;
+    } catch (e) {
+      console.warn('[SupabaseAuth] loadProfile falhou (offline?):', e.message);
+      return null;
+    }
+  },
+
+  /** Registra listener para mudanças de sessão (login/logout externos) */
+  onAuthChange(callback) {
+    if (!supabaseClient) return;
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      callback(session?.user ?? null);
+    });
+  }
+};
+
 
 // ==========================================================================
 // 1. GERENCIADOR DE ÁUDIO PROCEDURAL (Web Audio API)
@@ -40,7 +151,7 @@ const AudioSynth = {
     if (this.ctx.state === 'suspended') this.ctx.resume();
 
     const now = this.ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99, 1046.50]; 
+    const notes = [523.25, 659.25, 783.99, 1046.50];
     const noteDuration = 0.08;
 
     notes.forEach((freq, index) => {
@@ -129,17 +240,17 @@ const AudioSynth = {
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    
+
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(120, this.ctx.currentTime);
     osc.frequency.setValueAtTime(100, this.ctx.currentTime + 0.15);
-    
+
     gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
-    
+
     osc.connect(gain);
     gain.connect(this.ctx.destination);
-    
+
     osc.start();
     osc.stop(this.ctx.currentTime + 0.3);
   },
@@ -151,14 +262,14 @@ const AudioSynth = {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     const now = this.ctx.currentTime;
-    
+
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(800, now);
     osc.frequency.exponentialRampToValueAtTime(180, now + 0.15);
-    
+
     gain.gain.setValueAtTime(0.2, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-    
+
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start();
@@ -254,7 +365,7 @@ const App = {
       totalFocusMinutes: 0,
       monstersDefeated: 0,
       rewardsClaimed: 0,
-      dailyFocusHistory: {} 
+      dailyFocusHistory: {}
     },
     lastResets: {
       daily: '',
@@ -293,16 +404,16 @@ const App = {
     { id: 'eq-catana', name: 'Teclado de Plasma Cyberpunk', slot: 'weapon', bonus: 5, bonusType: 'foc', cost: 200, emoji: '🗡️', desc: 'Injeta plasma nas suas linhas de código. (+5 FOC) | Passiva: +25% DPS contra monstros.' },
     { id: 'eq-jaqueta', name: 'Jaqueta de Couro Synthwave', slot: 'armor', bonus: 5, bonusType: 'con', cost: 250, emoji: '🧥', desc: 'Bloqueia vibrações de procrastinação. (+5 CON) | Passiva: -50% penalidades ao desistir/falhar.' },
     { id: 'eq-drone', name: 'Drone Auxiliar de IA Suprema', slot: 'accessory', bonus: 12, bonusType: 'int', cost: 450, emoji: '🛸', desc: 'Drone flutuante de IA Suprema. (+8 INT, +4 FOC) | Passiva: +2 GP por segundo de foco e -15% custo do Gacha.' },
-    
+
     { id: 'eq-excalibur', name: 'Teclado Mecânico Excalibur', slot: 'weapon', bonus: 10, bonusType: 'foc', cost: 450, emoji: '⌨️', desc: 'Teclas táteis barulhentas para foco auditivo absoluto. (+10 FOC)' },
     { id: 'eq-livro', name: 'Grimório de Engenharia Semântica', slot: 'weapon', bonus: 8, bonusType: 'int', cost: 380, emoji: '📖', desc: 'Páginas sagradas de conhecimento computacional avançado. (+8 INT)' },
     { id: 'eq-caneta', name: 'Pena Estelar de Caligrafia', slot: 'weapon', bonus: 4, bonusType: 'int', cost: 120, emoji: '🖋️', desc: 'Desliza sobre o papel com precisão intelectual. (+4 INT)' },
     { id: 'eq-laser', name: 'Sabre de Luz Focus Saber', slot: 'weapon', bonus: 15, bonusType: 'foc', cost: 800, emoji: '⚔️', desc: 'Corta distrações com pura energia focalizada. (+15 FOC)' },
-    
+
     { id: 'eq-escudo', name: 'Abafador Acústico de Silêncio ANC', slot: 'armor', bonus: 8, bonusType: 'con', cost: 350, emoji: '🎧', desc: 'Fones noise-cancelling que isolam ruídos externos. (+8 CON)' },
     { id: 'eq-capa', name: 'Manto da Fluidez Mental (Flow)', slot: 'armor', bonus: 12, bonusType: 'con', cost: 600, emoji: '🥋', desc: 'Sinta o estado de imersão perfeita com esta capa. (+12 CON)' },
     { id: 'eq-armadura', name: 'Exoesqueleto Cognitivo Mark II', slot: 'armor', bonus: 18, bonusType: 'con', cost: 1000, emoji: '🛡️', desc: 'Blindagem total contra preguiça e cansaço físico. (+18 CON)' },
-    
+
     { id: 'eq-cafe', name: 'Cálice de Café Infinito', slot: 'accessory', bonus: 5, bonusType: 'foc', cost: 180, emoji: '☕', desc: 'Uma xícara mágica que regenera seu foco mental. (+5 FOC)' },
     { id: 'eq-gato', name: 'Gato Cibernético Companheiro', slot: 'accessory', bonus: 12, bonusType: 'int', cost: 650, emoji: '🐱', desc: 'Um pet eletrônico que ronrona algoritmos limpos. (+12 INT)' },
     { id: 'eq-coroa', name: 'Coroa Quântica da Sabedoria', slot: 'accessory', bonus: 20, bonusType: 'int', cost: 1200, emoji: '👑', desc: 'Sincroniza os neurônios em frequências transcendentais. (+20 INT)' },
@@ -345,14 +456,47 @@ const App = {
     { id: 'theme-vaporwave', name: 'Vaporwave Retrowave', cost: 1000, desc: 'Estética clássica anos 80, tons pastel rosa, azul e roxo.', themeClass: 'vaporwave' }
   ],
 
-  // Inicialização
-  init() {
-    this.loadState();
+  // ============================================================
+  // INICIALIZAÇÃO ASSÍNCRONA COM SUPABASE AUTH
+  // ============================================================
+  async init() {
+    // 1. Registra listeners de auth antes de tudo
+    this.setupAuthEventListeners();
+
+    // 2. Verifica se há sessão ativa (token armazenado pelo SDK)
+    const user = await SupabaseAuth.getSession();
+
+    if (user) {
+      // Usuário já autenticado: carrega dados e entra no jogo
+      SupabaseAuth.currentUser = user;
+      await this.bootGame();
+    } else {
+      // Sem sessão: exibe a tela de login cyberpunk
+      this.showAuthScreen();
+    }
+
+    // 3. Reage a mudanças de sessão (ex: login em outra aba, token expirado)
+    SupabaseAuth.onAuthChange(async (u) => {
+      if (u && !SupabaseAuth.currentUser) {
+        SupabaseAuth.currentUser = u;
+        await this.bootGame();
+      } else if (!u && SupabaseAuth.currentUser) {
+        SupabaseAuth.currentUser = null;
+        this.resetToAuthScreen();
+      }
+    });
+  },
+
+  /** Fluxo de inicialização do jogo (pós-login) */
+  async bootGame() {
+    await this.loadState();        // Carrega do cloud (ou LocalStorage como fallback)
     this.setupEventListeners();
     this.checkResets();
     this.setTimerMode('focus');
     this.renderAll();
-    
+    this.hideAuthScreen();
+    this.renderUserInfo();
+
     if (!this.state.character.name) {
       this.openModal('intro-modal', false);
     } else {
@@ -360,30 +504,41 @@ const App = {
     }
   },
 
-  // Carrega estado do LocalStorage com retrocompatibilidade
-  loadState() {
-    const saved = localStorage.getItem('dopastudy_save');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        this.state = {
-          ...this.state,
-          ...parsed,
-          character: { ...this.state.character, ...parsed.character },
-          analytics: { ...this.state.analytics, ...parsed.analytics },
-          lastResets: { ...this.state.lastResets, ...parsed.lastResets }
-        };
-      } catch (e) {
-        console.error("Erro ao carregar save", e);
-      }
+  // ============================================================
+  // LOAD STATE — Híbrido: Cloud (Supabase) → LocalStorage fallback
+  // ============================================================
+  async loadState() {
+    let parsed = null;
+
+    // 1. Tenta carregar do Supabase (source-of-truth na nuvem)
+    const cloudData = await SupabaseAuth.loadProfile();
+    if (cloudData) {
+      parsed = cloudData;
+      // Atualiza cache local imediatamente
+      try { localStorage.setItem('dopastudy_save', JSON.stringify(parsed)); } catch (_) { }
     } else {
-      // Cria as missões iniciais padrão com o novo sistema
+      // 2. Fallback: LocalStorage (modo offline ou novo herói)
+      const cached = localStorage.getItem('dopastudy_save');
+      if (cached) {
+        try { parsed = JSON.parse(cached); } catch (e) { console.error('Erro ao parsear save local', e); }
+      }
+    }
+
+    if (parsed) {
+      this.state = {
+        ...this.state,
+        ...parsed,
+        character: { ...this.state.character, ...parsed.character },
+        analytics: { ...this.state.analytics, ...parsed.analytics },
+        lastResets: { ...this.state.lastResets, ...parsed.lastResets }
+      };
+    } else {
+      // Novo herói: gera missões iniciais e recompensas padrão
       this.state.quests = [];
       this.state.character.campaignStage = 1;
       this.generateDailyQuests();
       this.generateWeeklyQuests();
       this.generateCampaignQuest();
-
       this.state.customRewards = [
         { id: 'r1', name: 'Pausa para Redes Sociais', desc: 'Liberado: Navegar 10 minutos livremente', cost: 40, isSystem: true },
         { id: 'r2', name: 'Chocolate / Café Premium', desc: 'Desbloqueia: Comer um doce ou café gourmet', cost: 60, isSystem: true },
@@ -392,33 +547,17 @@ const App = {
       ];
     }
 
-    // Higienização / Forçar novas variáveis para compatibilidade
-    if (!this.state.character.equipment) {
-      this.state.character.equipment = { weapon: null, armor: null, accessory: null };
-    }
-    if (!this.state.unlockedEquipment) {
-      this.state.unlockedEquipment = [];
-    }
-    if (this.state.focusCombo === undefined) {
-      this.state.focusCombo = 0;
-    }
-    if (!this.state.unlockedTitles) {
-      this.state.unlockedTitles = ['Recruta do Saber'];
-    }
-    if (!this.state.unlockedSkins) {
-      this.state.unlockedSkins = ['skin-default'];
-    }
-    if (!this.state.unlockedThemes) {
-      this.state.unlockedThemes = ['default'];
-    }
-    if (!this.state.activeBuffs) {
-      this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
-    }
-    if (this.state.character.campaignStage === undefined) {
-      this.state.character.campaignStage = 1;
-    }
-    
-    // Converte saves antigos para o novo sistema dinâmico se necessário
+    // Higienização para retrocompatibilidade (saves antigos / campos novos)
+    if (!this.state.character.equipment) this.state.character.equipment = { weapon: null, armor: null, accessory: null };
+    if (!this.state.unlockedEquipment) this.state.unlockedEquipment = [];
+    if (this.state.focusCombo === undefined) this.state.focusCombo = 0;
+    if (!this.state.unlockedTitles) this.state.unlockedTitles = ['Recruta do Saber'];
+    if (!this.state.unlockedSkins) this.state.unlockedSkins = ['skin-default'];
+    if (!this.state.unlockedThemes) this.state.unlockedThemes = ['default'];
+    if (!this.state.activeBuffs) this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
+    if (this.state.character.campaignStage === undefined) this.state.character.campaignStage = 1;
+
+    // Converte saves antigos para o novo sistema dinâmico de missões
     if (!this.state.quests || this.state.quests.length === 0 || !this.state.quests.some(q => q.type === 'campaign')) {
       this.state.quests = [];
       this.generateDailyQuests();
@@ -481,10 +620,10 @@ const App = {
   generateCampaignQuest() {
     const stage = this.state.character.campaignStage || 1;
     const qData = EpicCampaignChain.find(c => c.stage === stage);
-    
+
     // Remove qualquer missão de campanha antiga
     this.state.quests = this.state.quests.filter(q => q.type !== 'campaign');
-    
+
     if (qData) {
       this.state.quests.push({
         id: `c_${stage}`,
@@ -508,7 +647,7 @@ const App = {
         const oldProgress = q.progress || 0;
         q.progress = Math.min(q.target, oldProgress + value);
         if (q.progress !== oldProgress) changed = true;
-        
+
         if (q.progress >= q.target && !q.completed) {
           q.completed = true;
           AudioSynth.playQuestComplete();
@@ -529,10 +668,10 @@ const App = {
     const stage = this.state.character.campaignStage || 1;
     const quest = this.state.quests.find(q => q.type === 'campaign' && !q.completed);
     if (!quest) return;
-    
+
     const qData = EpicCampaignChain.find(c => c.stage === stage);
     if (!qData) return;
-    
+
     let completed = false;
     if (qData.evalType === 'level') {
       completed = (this.state.character.level >= qData.target);
@@ -548,19 +687,19 @@ const App = {
     } else if (qData.evalType === 'god_mode_unlocked') {
       completed = this.state.unlockedSkins.includes('skin-god-mode') || this.state.unlockedThemes.length > 1;
     }
-    
+
     if (completed) {
       quest.completed = true;
       AudioSynth.playQuestComplete();
       this.addXp(quest.xp);
       this.addGold(quest.gold);
-      
+
       this.addLog(`🌟 CAMPANHA ÉPICA ETAPA ${stage} CONCLUÍDA: "${qData.name}"! +${quest.xp} XP e +${quest.gold} GP!`, "victory");
       this.showSplash(`Saga Épica Concluída! 🌟`, `Parabéns! Você concluiu a Etapa ${stage}: <strong>${qData.name}</strong>.<br>Concedido: +${quest.xp} XP e +${quest.gold} GP.<br>A próxima missão da saga foi desbloqueada!`, "⚔️");
-      
+
       this.state.character.campaignStage++;
       this.saveState();
-      
+
       // Gera a próxima missão e renderiza
       setTimeout(() => {
         this.generateCampaignQuest();
@@ -570,9 +709,24 @@ const App = {
     }
   },
 
-  // Salva estado no LocalStorage
+  // ============================================================
+  // SAVE STATE — Híbrido: LocalStorage instantâneo + Supabase cloud em background
+  //
+  // Design: fire-and-forget. Todos os 25+ call sites existentes (this.saveState())
+  // continuam funcionando sem nenhuma alteração, o gameplay não sofre nenhum lag.
+  // ============================================================
   saveState() {
-    localStorage.setItem('dopastudy_save', JSON.stringify(this.state));
+    // 1. LocalStorage: salva IMEDIATAMENTE (zero latência para o gameplay)
+    try {
+      localStorage.setItem('dopastudy_save', JSON.stringify(this.state));
+    } catch (e) {
+      console.warn('[saveState] LocalStorage falhou:', e.message);
+    }
+
+    // 2. Supabase Cloud: salva em background (fire-and-forget, não bloqueia)
+    SupabaseAuth.saveProfile(this.state).catch(e =>
+      console.warn('[saveState] Cloud sync falhou silenciosamente:', e?.message)
+    );
   },
 
   // ==========================================================================
@@ -616,13 +770,13 @@ const App = {
   // ==========================================================================
   checkResets() {
     const todayStr = new Date().toDateString();
-    
+
     // 1. Reset Diário
     if (this.state.lastResets.daily !== todayStr) {
       this.generateDailyQuests();
       this.addLog("📅 Novo dia iniciado! Uma nova seleção de Missões Diárias foi gerada.", "info");
       this.state.lastResets.daily = todayStr;
-      
+
       this.checkStreak();
       this.saveState();
     }
@@ -649,13 +803,13 @@ const App = {
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
-    
+
     const todayKey = this.formatDateKey(today);
     const yesterdayKey = this.formatDateKey(yesterday);
-    
+
     const hasFocusToday = (this.state.analytics.dailyFocusHistory[todayKey] || 0) > 0;
     const hasFocusYesterday = (this.state.analytics.dailyFocusHistory[yesterdayKey] || 0) > 0;
-    
+
     if (!hasFocusYesterday && !hasFocusToday) {
       this.state.analytics.streak = 0;
     }
@@ -664,7 +818,7 @@ const App = {
   incrementStreak() {
     const today = new Date();
     const todayKey = this.formatDateKey(today);
-    
+
     const hasFocusToday = (this.state.analytics.dailyFocusHistory[todayKey] || 0) > 0;
     if (!hasFocusToday) {
       this.state.analytics.streak += 1;
@@ -678,13 +832,13 @@ const App = {
   spawnMonster() {
     const level = this.state.character.level;
     const monsterBase = Monsters[Math.floor(Math.random() * Monsters.length)];
-    
+
     // Inimigos começam fracos e ficam progressivamente mais fortes com o tempo na mesma sessão!
     const sessionDefeats = this.sessionMonsterDefeats || 0;
     const sessionScaling = 1 + sessionDefeats * 0.25;
     const levelMult = (1 + (level - 1) * 0.15) * sessionScaling;
     const maxHp = Math.floor(monsterBase.baseHp * monsterBase.scale * levelMult);
-    
+
     this.activeMonster = {
       name: monsterBase.name,
       emoji: monsterBase.emoji,
@@ -710,36 +864,36 @@ const App = {
   // Morte do monstro a meio do cronômetro (continua sem parar)
   defeatMonsterMidTimer() {
     AudioSynth.playMonsterDefeated();
-    
+
     // Combo multiplier
     const comboMultiplier = 1 + (this.state.focusCombo * 0.1);
     const doubleXpMultiplier = (this.state.activeBuffs && this.state.activeBuffs.doubleXp > 0) ? 2 : 1;
     const xpGained = Math.round(this.activeMonster.xpReward * comboMultiplier * doubleXpMultiplier);
     const goldGained = Math.round(this.activeMonster.goldReward * comboMultiplier);
-    
+
     this.addXp(xpGained);
     this.addGold(goldGained);
-    
+
     const displayName = this.getMonsterDisplayName();
     const buffSuffix = doubleXpMultiplier > 1 ? " [XP DUPLO ATIVO! 🧪]" : "";
     this.addLog(`👾 Derrotaste o ${displayName}! +${xpGained} XP${buffSuffix} e +${goldGained} GP! (Combo x${this.state.focusCombo} 🔥)`, "victory");
-    
+
     this.state.analytics.monstersDefeated += 1;
     this.sessionMonsterDefeats = (this.sessionMonsterDefeats || 0) + 1;
-    
+
     // Dispara progresso das novas missões
     this.triggerWeeklyProgress('monsters_defeated', 1);
     this.triggerWeeklyProgress('monster_damage', this.activeMonster.maxHp);
     this.checkCampaignQuests();
-    
+
     // Animação visual de morte
     const sprite = document.getElementById('monster-sprite');
     if (sprite) {
       sprite.className = 'monster-sprite dead';
     }
-    
+
     this.saveState();
-    
+
     // Traz novo monstro automaticamente (será mais forte devido ao sessionMonsterDefeats!)
     setTimeout(() => {
       this.spawnMonster();
@@ -751,18 +905,18 @@ const App = {
   // ==========================================================================
   setTimerMode(mode) {
     if (this.timer.intervalId) return;
-    
+
     this.timer.mode = mode;
     this.timer.isCustom = false;
     this.continuousFocusTicks = 0; // Reseta ticks contínuos
-    
+
     const modeBtnFocus = document.querySelector('[data-mode="focus"]');
     const modeBtnShort = document.querySelector('[data-mode="short-break"]');
     const modeBtnLong = document.querySelector('[data-mode="long-break"]');
-    
+
     if (modeBtnFocus && modeBtnShort && modeBtnLong) {
       [modeBtnFocus, modeBtnShort, modeBtnLong].forEach(btn => btn.classList.remove('primary'));
-      
+
       let minutes = 25;
       if (mode === 'focus') {
         minutes = 25;
@@ -780,17 +934,17 @@ const App = {
         document.getElementById('timer-mode-label').textContent = "Pausa Longa";
         document.getElementById('timer-progress').classList.add('break-mode');
       }
-      
+
       this.timer.duration = minutes * 60;
       this.timer.timeLeft = this.timer.duration;
     }
-    
+
     this.renderTimerDisplay();
   },
 
   startTimer() {
     AudioSynth.playClick();
-    
+
     // Caso seja modo personalizado de foco
     if (this.timer.mode === 'idle') {
       const customMin = parseInt(document.getElementById('custom-minutes').value) || 25;
@@ -799,17 +953,17 @@ const App = {
       this.timer.timeLeft = this.timer.duration;
       this.timer.isCustom = true;
     }
-    
+
     this.cancelPauseCounter();
-    
+
     document.getElementById('timer-start').style.display = 'none';
     document.getElementById('timer-pause').style.display = 'inline-flex';
     document.getElementById('timer-pause').disabled = false;
     document.getElementById('timer-reset').disabled = false;
-    
+
     if (this.timer.mode === 'focus') {
       this.continuousFocusTicks = 0; // Reinicia o contador contínuo
-      
+
       // Ajusta o HP do monstro para a duração
       const stats = this.getEffectiveStats();
       const dps = 1 + stats.foc * 0.05;
@@ -817,18 +971,18 @@ const App = {
       this.activeMonster.hp = this.activeMonster.maxHp;
       this.activeMonster.xpReward = Math.floor(25 * (this.timer.duration / 1500) * this.state.character.level);
       this.activeMonster.goldReward = Math.floor(15 * (this.timer.duration / 1500) * this.state.character.level);
-      
+
       this.renderMonster();
-      
+
       const displayName = this.getMonsterDisplayName();
       this.addLog(`⚔️ Combate iniciado contra o ${displayName}! Mantém o foco!`, "info");
-      
+
       const sprite = document.getElementById('monster-sprite');
       if (sprite) sprite.className = 'monster-sprite idle';
     } else {
       this.addLog(`☕ Pausa iniciada. Descanse um pouco!`, "info");
     }
-    
+
     // Corrige erro crítico limpando antes de criar
     if (this.timer.intervalId) clearInterval(this.timer.intervalId);
     this.timer.intervalId = setInterval(() => {
@@ -839,17 +993,17 @@ const App = {
   pauseTimer() {
     AudioSynth.playClick();
     if (!this.timer.intervalId) return;
-    
+
     clearInterval(this.timer.intervalId);
     this.timer.intervalId = null;
-    
+
     // Regra estrita: pausou zera o timer de críticos ininterruptos
     this.continuousFocusTicks = 0;
-    
+
     document.getElementById('timer-start').style.display = 'inline-flex';
     document.getElementById('timer-start').textContent = '▶ Retomar';
     document.getElementById('timer-pause').style.display = 'none';
-    
+
     if (this.timer.mode === 'focus') {
       this.startPauseCounter();
     }
@@ -860,26 +1014,26 @@ const App = {
     const stats = this.getEffectiveStats();
     // Atributo CON estende o buffer inicial de pausa
     this.timer.pauseSecondsLeft = 60 + stats.con * 2;
-    
+
     const pauseAlert = document.getElementById('pause-alert');
     const counterText = document.getElementById('pause-timer-counter');
-    
+
     if (pauseAlert && counterText) {
       pauseAlert.style.display = 'flex';
       counterText.textContent = `${this.timer.pauseSecondsLeft}s`;
     }
-    
+
     this.addLog(`⚠️ CUIDADO! O monstro está se preparando para contra-atacar!`, "penalty");
-    
+
     if (this.timer.pauseIntervalId) clearInterval(this.timer.pauseIntervalId);
     this.timer.pauseIntervalId = setInterval(() => {
       this.timer.pauseSecondsLeft--;
       if (counterText) counterText.textContent = `${this.timer.pauseSecondsLeft}s`;
-      
+
       if (this.timer.pauseSecondsLeft % 15 === 0 || this.timer.pauseSecondsLeft <= 5) {
         AudioSynth.playWarning();
       }
-      
+
       if (this.timer.pauseSecondsLeft <= 0) {
         this.triggerMonsterCounterAttack(true);
       }
@@ -898,20 +1052,20 @@ const App = {
   triggerMonsterCounterAttack(wasPaused) {
     this.cancelPauseCounter();
     AudioSynth.playWarning();
-    
+
     // Penalidade direta reduzida com Jaqueta de Couro Synthwave
     const hasJaqueta = this.state.character.equipment && this.state.character.equipment.armor === 'eq-jaqueta';
     const xpPenalty = hasJaqueta ? 7 : 15;
     this.removeXp(xpPenalty);
-    
+
     // Reseta Combo de Foco para 0
     this.state.focusCombo = 0;
     this.updateComboEffects();
-    
+
     const reason = wasPaused ? "excesso de pausa" : "desistência voluntária";
     const jacketSuffix = hasJaqueta ? " (Proteção da Jaqueta Synthwave ativa: -50% penalidade!)" : "";
     this.addLog(`❌ GOLPE CRÍTICO! Perdeste ${xpPenalty} XP${jacketSuffix} e resetaste teu Combo de Foco por ${reason}!`, "penalty");
-    
+
     const card = document.getElementById('char-card');
     if (card) {
       card.style.animation = 'none';
@@ -919,7 +1073,7 @@ const App = {
         card.style.animation = 'monsterShake 0.4s ease';
       }, 10);
     }
-    
+
     this.resetTimerState();
   },
 
@@ -938,15 +1092,15 @@ const App = {
     this.cancelPauseCounter();
     this.continuousFocusTicks = 0;
     this.sessionMonsterDefeats = 0;
-    
+
     this.timer.mode = 'idle';
     this.timer.timeLeft = 0;
     this.timer.duration = 0;
-    
+
     const startBtn = document.getElementById('timer-start');
     const pauseBtn = document.getElementById('timer-pause');
     const resetBtn = document.getElementById('timer-reset');
-    
+
     if (startBtn && pauseBtn && resetBtn) {
       startBtn.style.display = 'inline-flex';
       startBtn.textContent = '▶ Iniciar';
@@ -954,7 +1108,7 @@ const App = {
       pauseBtn.disabled = true;
       resetBtn.disabled = true;
     }
-    
+
     this.setTimerMode('focus');
     this.spawnMonster();
   },
@@ -965,14 +1119,14 @@ const App = {
       if (this.timer.timeLeft > 0) {
         this.timer.timeLeft--;
         this.renderTimerDisplay();
-        
+
         if (this.timer.mode === 'focus') {
           // Decrementa Buffs Temporários
           if (this.state.activeBuffs) {
             if (this.state.activeBuffs.doubleXp > 0) this.state.activeBuffs.doubleXp--;
             if (this.state.activeBuffs.doubleDamage > 0) this.state.activeBuffs.doubleDamage--;
             this.renderBuffsTimeline();
-            
+
             // Re-renderiza loja se visível para atualizar o tempo ativo restante
             const skinShopTab = document.getElementById('tab-skin-shop');
             if (skinShopTab && skinShopTab.classList.contains('active')) {
@@ -982,13 +1136,13 @@ const App = {
 
           // Incrementa contador contínuo
           this.continuousFocusTicks++;
-          
+
           // CÁLCULO DE DANO: Dano Efetivo = (FOC Efetivo * Passiva da Arma) * (doubleDamage > 0 ? 2 : 1)
           const stats = this.getEffectiveStats();
           const weaponPassiva = (this.state.character.equipment && this.state.character.equipment.weapon === 'eq-catana') ? 1.25 : 1.0;
           const doubleDamageMult = (this.state.activeBuffs && this.state.activeBuffs.doubleDamage > 0) ? 2 : 1;
           const dps = (stats.foc * weaponPassiva) * doubleDamageMult;
-          
+
           this.activeMonster.hp = Math.max(0, this.activeMonster.hp - dps);
           this.renderMonster();
 
@@ -1005,7 +1159,7 @@ const App = {
           if (Math.random() < critChance) {
             this.triggerCriticalAttack(dps);
           }
-          
+
           // Efeito de tremer o sprite
           if (this.timer.timeLeft % 10 === 0) {
             const sprite = document.getElementById('monster-sprite');
@@ -1018,12 +1172,12 @@ const App = {
               }, 400);
             }
           }
-          
+
           // Dispara Ataque Crítico a cada 5 minutos (300 ticks) de foco ininterrupto
           if (this.continuousFocusTicks > 0 && this.continuousFocusTicks % 300 === 0) {
             this.triggerCriticalAttack(dps);
           }
-          
+
           // Se o monstro morrer com o cronômetro ativo
           if (this.activeMonster.hp <= 0) {
             this.defeatMonsterMidTimer();
@@ -1041,17 +1195,17 @@ const App = {
   // Executa ataque crítico a cada 5 minutos de foco ininterrupto
   triggerCriticalAttack(normalDps) {
     AudioSynth.playCriticalHit();
-    
+
     const critDamage = normalDps * 15;
     this.activeMonster.hp = Math.max(0, this.activeMonster.hp - critDamage);
     this.renderMonster();
-    
+
     // Dá ouro imediato
     this.addGold(5);
-    
+
     const displayName = this.getMonsterDisplayName();
     this.addLog(`💥 ATAQUE CRÍTICO! Causaste ${Math.round(critDamage)} de dano massivo no ${displayName} por manteres foco estável! +5 GP!`, "damage");
-    
+
     this.showFloatingText('+5 GP 🪙', 'floating-loot');
   },
 
@@ -1063,9 +1217,9 @@ const App = {
       floatEl.innerHTML = text;
       floatEl.style.left = `${30 + Math.random() * 40}%`;
       floatEl.style.top = `${20 + Math.random() * 30}%`;
-      
+
       container.appendChild(floatEl);
-      
+
       // Limpa após animação CSS acabar
       setTimeout(() => {
         floatEl.remove();
@@ -1077,31 +1231,31 @@ const App = {
     clearInterval(this.timer.intervalId);
     this.timer.intervalId = null;
     this.continuousFocusTicks = 0; // Reinicia contador
-    
+
     if (this.timer.mode === 'focus') {
       const focusMinutes = Math.round(this.timer.duration / 60);
-      
+
       // Incrementa Combo de Foco
       this.state.focusCombo += 1;
       this.updateComboEffects();
       this.addLog(`🔥 Combo de Foco aumentado! Multiplicador atual: +${this.state.focusCombo * 10}% de GP/XP.`, "victory");
-      
+
       // Histórico analítico
       this.addFocusAnalytics(focusMinutes);
-      
+
       // Se ainda sobrou HP, liquida o monstro
       if (this.activeMonster.hp > 0) {
         this.activeMonster.hp = 0;
         this.renderMonster();
         this.defeatMonsterMidTimer();
       }
-      
+
       this.addLog(`🎉 Ciclo de Foco de ${focusMinutes}m completado! Foco estável.`, "victory");
       this.incrementStreak();
-      
+
       // Reseta derrotas do monstro ao fim da sessão com sucesso
       this.sessionMonsterDefeats = 0;
-      
+
       // Dispara missões diárias e semanais
       this.triggerDailyProgress('focus_session_completed', focusMinutes);
       const todayKey = this.formatDateKey(new Date());
@@ -1109,17 +1263,17 @@ const App = {
       this.triggerDailyProgress('focus_minutes_today', minutesToday);
       this.triggerWeeklyProgress('combo', this.state.focusCombo);
       this.checkCampaignQuests();
-      
+
       this.saveState();
       this.resetTimerState();
       this.setTimerMode('short-break');
     } else {
       AudioSynth.playQuestComplete();
       this.addLog(`💪 Intervalo concluído! Retornando ao combate de foco.`, "info");
-      
+
       // Dispara missão diária de descanso saudável
       this.triggerDailyProgress('break_completed', 1);
-      
+
       this.resetTimerState();
       this.setTimerMode('focus');
     }
@@ -1128,7 +1282,7 @@ const App = {
   updateComboEffects() {
     const badge = document.getElementById('combo-badge');
     const badgeVal = document.getElementById('combo-value-badge');
-    
+
     if (badge && badgeVal) {
       if (this.state.focusCombo > 0) {
         badge.classList.add('active');
@@ -1158,28 +1312,28 @@ const App = {
     // Buff de intelecto efetivo (+1% XP por ponto)
     const intBonus = 1 + stats.int * 0.01;
     const finalAmount = Math.round(amount * intBonus);
-    
+
     this.state.character.xp += finalAmount;
-    
+
     let xpNeeded = this.getXpRequired(this.state.character.level);
     let leveledUp = false;
-    
+
     while (this.state.character.xp >= xpNeeded) {
       this.state.character.xp -= xpNeeded;
       this.state.character.level++;
-      
+
       this.state.character.foc += 1;
       this.state.character.con += 1;
       this.state.character.int += 1;
-      
+
       leveledUp = true;
       xpNeeded = this.getXpRequired(this.state.character.level);
     }
-    
+
     if (leveledUp) {
       this.triggerLevelUpEffects();
     }
-    
+
     this.renderCharacterCard();
     this.saveState();
   },
@@ -1210,7 +1364,7 @@ const App = {
     AudioSynth.playLevelUp();
     this.addLog(`✨ Nível UP! Alcançaste o Nível ${this.state.character.level}! Atributos base elevados.`, "victory");
     this.showSplash("✨ SUBIU DE NÍVEL!", `Você alcançou o Nível ${this.state.character.level}! Seus atributos foram fortificados.`, "🏆");
-    
+
     // Dispara validação de missões de campanha baseadas no novo nível
     this.checkCampaignQuests();
   },
@@ -1221,7 +1375,7 @@ const App = {
   addQuest(name, desc, type, targetMinutes = 0) {
     let xp = 20;
     let gold = 10;
-    
+
     if (type === 'weekly') {
       xp = 100;
       gold = 50;
@@ -1229,7 +1383,7 @@ const App = {
       xp = 350;
       gold = 180;
     }
-    
+
     const newQuest = {
       id: 'custom_' + Date.now(),
       type,
@@ -1239,13 +1393,13 @@ const App = {
       gold,
       completed: false
     };
-    
+
     if (type === 'weekly') {
       newQuest.progress = 0;
       newQuest.target = targetMinutes;
       newQuest.desc += ` (Meta: ${targetMinutes} min)`;
     }
-    
+
     this.state.quests.push(newQuest);
     this.saveState();
     this.renderQuests();
@@ -1262,7 +1416,7 @@ const App = {
   toggleQuest(id, checked) {
     const quest = this.state.quests.find(q => q.id === id);
     if (!quest) return;
-    
+
     // Bloqueia marcação manual para missões semanais ou de campanha automáticas
     if (quest.type === 'weekly' || quest.id.startsWith('c')) {
       AudioSynth.playWarning();
@@ -1270,17 +1424,17 @@ const App = {
       this.renderQuests();
       return;
     }
-    
+
     if (checked && !quest.completed) {
       quest.completed = true;
       AudioSynth.playQuestComplete();
-      
+
       this.addXp(quest.xp);
       this.addGold(quest.gold);
-      
+
       this.addLog(`✅ Missão completada: "${quest.name}"! +${quest.xp} XP e +${quest.gold} GP.`, "victory");
       this.saveState();
-      
+
       setTimeout(() => {
         this.renderQuests();
       }, 500);
@@ -1306,7 +1460,7 @@ const App = {
           q.progress = Math.min(q.target, oldProgress + value);
           if (q.progress !== oldProgress) changed = true;
         }
-        
+
         if (q.progress >= q.target && !q.completed) {
           q.completed = true;
           AudioSynth.playQuestComplete();
@@ -1334,7 +1488,7 @@ const App = {
       cost: parseInt(cost) || 50,
       isSystem: false
     };
-    
+
     this.state.customRewards.push(newReward);
     this.saveState();
     this.renderHabitRewards();
@@ -1351,13 +1505,13 @@ const App = {
   buyReward(id) {
     const reward = this.state.customRewards.find(r => r.id === id);
     if (!reward) return;
-    
+
     if (this.deductGold(reward.cost)) {
       AudioSynth.playQuestComplete();
       this.state.analytics.rewardsClaimed += 1;
       this.triggerWeeklyProgress('rewards_claimed', 1);
       this.saveState();
-      
+
       this.addLog(`🛍️ Recompensa comprada: "${reward.name}" por ${reward.cost} GP.`, "victory");
       this.showSplash("Recompensa Liberada! 🎁", `Você comprou e pode usufruir de:<br><strong>${reward.name}</strong><br><span style="font-size:0.85rem;color:var(--text-sub)">${reward.desc}</span>`, "🎉");
     } else {
@@ -1372,21 +1526,21 @@ const App = {
   buyEpicItem(type, id, cost) {
     if (this.deductGold(cost)) {
       AudioSynth.playQuestComplete();
-      
+
       if (type === 'skin') {
         this.state.unlockedSkins.push(id);
-        this.addLog(`👑 Skin Desbloqueada: "${this.shopSkins.find(s=>s.id===id).name}"!`, "victory");
+        this.addLog(`👑 Skin Desbloqueada: "${this.shopSkins.find(s => s.id === id).name}"!`, "victory");
       } else if (type === 'title') {
         this.state.unlockedTitles.push(id);
-        this.addLog(`👑 Título Desbloqueado: "${this.shopTitles.find(t=>t.id===id).name}"!`, "victory");
+        this.addLog(`👑 Título Desbloqueado: "${this.shopTitles.find(t => t.id === id).name}"!`, "victory");
       } else if (type === 'theme') {
         this.state.unlockedThemes.push(id);
-        this.addLog(`👑 Tema Desbloqueado: "${this.shopThemes.find(th=>th.id===id).name}"!`, "victory");
+        this.addLog(`👑 Tema Desbloqueado: "${this.shopThemes.find(th => th.id === id).name}"!`, "victory");
       } else if (type === 'equipment') {
         this.state.unlockedEquipment.push(id);
-        this.addLog(`🗡️ Equipamento Desbloqueado: "${this.shopEquipments.find(eq=>eq.id===id).name}"!`, "victory");
+        this.addLog(`🗡️ Equipamento Desbloqueado: "${this.shopEquipments.find(eq => eq.id === id).name}"!`, "victory");
       }
-      
+
       this.saveState();
       this.checkCampaignQuests();
       this.renderEpicShop();
@@ -1399,7 +1553,7 @@ const App = {
 
   equipEpicItem(type, id) {
     AudioSynth.playClick();
-    
+
     if (type === 'skin') {
       this.state.character.activeSkin = id;
       this.addLog(`👑 Skin de Perfil equipada.`, "info");
@@ -1417,7 +1571,7 @@ const App = {
       if (eq) {
         const slot = eq.slot;
         const currentEquipped = this.state.character.equipment[slot];
-        
+
         if (currentEquipped === id) {
           // Desequipa
           this.state.character.equipment[slot] = null;
@@ -1429,7 +1583,7 @@ const App = {
         }
       }
     }
-    
+
     this.saveState();
     this.renderCharacterCard();
     this.renderEpicShop();
@@ -1442,19 +1596,19 @@ const App = {
   buyPotion(id, cost) {
     const pot = this.shopPotions.find(p => p.id === id);
     if (!pot) return;
-    
+
     if (this.deductGold(cost)) {
       AudioSynth.playQuestComplete();
-      
+
       if (!this.state.activeBuffs) {
         this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
       }
       this.state.activeBuffs[pot.type] = pot.duration;
-      
+
       this.saveState();
       this.renderEpicShop();
       this.renderBuffsTimeline();
-      
+
       this.addLog(`🧪 Consumiste ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
     } else {
       AudioSynth.playWarning();
@@ -1465,30 +1619,30 @@ const App = {
   renderBuffsTimeline() {
     const container = document.getElementById('buffs-timeline');
     if (!container) return;
-    
+
     container.innerHTML = '';
-    
+
     if (!this.state.activeBuffs) return;
-    
+
     const doubleXp = this.state.activeBuffs.doubleXp || 0;
     const doubleDamage = this.state.activeBuffs.doubleDamage || 0;
-    
+
     if (doubleXp > 0) {
       const min = Math.floor(doubleXp / 60);
       const sec = doubleXp % 60;
       const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-      
+
       const badge = document.createElement('div');
       badge.className = 'buff-badge xp-buff';
       badge.innerHTML = `<span>🧪 XP Duplo</span> <span class="buff-timer">${formatted}</span>`;
       container.appendChild(badge);
     }
-    
+
     if (doubleDamage > 0) {
       const min = Math.floor(doubleDamage / 60);
       const sec = doubleDamage % 60;
       const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-      
+
       const badge = document.createElement('div');
       badge.className = 'buff-badge damage-buff';
       badge.innerHTML = `<span>⚡ Dano Duplo</span> <span class="buff-timer">${formatted}</span>`;
@@ -1506,28 +1660,28 @@ const App = {
 
     if (this.deductGold(cost)) {
       AudioSynth.playClick();
-      
+
       // Inicia animação visual de Baú no splash modal
       this.openModal('splash-modal');
-      
+
       const splashIcon = document.getElementById('splash-icon');
       const splashTitle = document.getElementById('splash-title');
       const splashText = document.getElementById('splash-reward-text');
-      
+
       if (splashIcon && splashTitle && splashText) {
         splashIcon.textContent = '📦';
         splashIcon.classList.add('chest-unboxing');
         splashTitle.textContent = 'Abrindo Baú Lendário...';
         splashText.innerHTML = 'Evocando as forças cognitivas da sorte. Aguarde...';
-        
+
         // Bloqueia botão de continuar temporariamente
         const closeBtn = document.getElementById('btn-close-splash');
         if (closeBtn) closeBtn.disabled = true;
-        
+
         setTimeout(() => {
           splashIcon.classList.remove('chest-unboxing');
           if (closeBtn) closeBtn.disabled = false;
-          
+
           // Sorteio
           const rand = Math.random();
           if (rand < 0.60) {
@@ -1542,7 +1696,7 @@ const App = {
             // 30% Rares Title: Imparavel ou Silicio
             const titleId = Math.random() < 0.5 ? 'title-imparavel' : 'title-silicio';
             const titleName = titleId === 'title-imparavel' ? 'O Imparável' : 'Cérebro de Silício';
-            
+
             if (!this.state.unlockedTitles.includes(titleId)) {
               this.state.unlockedTitles.push(titleId);
             }
@@ -1562,7 +1716,7 @@ const App = {
             splashText.innerHTML = 'Você alcançou o lendário <strong>Modo Deus</strong>!<br>Desbloqueou uma aura de chamas douradas divinas para equipar em seu card.';
             this.addLog(`📦 Gacha: Skin MODO DEUS obtida! 🔥`, "victory");
           }
-          
+
           this.state.analytics.rewardsClaimed++;
           this.triggerWeeklyProgress('gacha_opened', 1);
           this.checkCampaignQuests();
@@ -1581,13 +1735,13 @@ const App = {
   // ==========================================================================
   addFocusAnalytics(minutes) {
     const todayStr = this.formatDateKey(new Date());
-    
+
     if (!this.state.analytics.dailyFocusHistory[todayStr]) {
       this.state.analytics.dailyFocusHistory[todayStr] = 0;
     }
     this.state.analytics.dailyFocusHistory[todayStr] += minutes;
     this.state.analytics.totalFocusMinutes += minutes;
-    
+
     // Dispara progresso das novas missões
     this.triggerWeeklyProgress('focus_minutes', minutes);
     this.triggerWeeklyProgress('active_days', 1);
@@ -1604,34 +1758,34 @@ const App = {
   renderAnalyticsChart() {
     const chartContainer = document.getElementById('analytics-bar-chart');
     if (!chartContainer) return;
-    
+
     chartContainer.innerHTML = '';
-    
+
     const days = [];
     const labels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
     const dates = [];
-    
+
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       dates.push(d);
     }
-    
+
     const values = dates.map(d => {
       const key = this.formatDateKey(d);
       return this.state.analytics.dailyFocusHistory[key] || 0;
     });
-    
+
     const maxVal = Math.max(...values, 30);
-    
+
     dates.forEach((date, index) => {
       const dayLabel = labels[date.getDay()];
       const val = values[index];
       const percent = (val / maxVal) * 100;
-      
+
       const barCol = document.createElement('div');
       barCol.className = 'chart-bar-col';
-      
+
       barCol.innerHTML = `
         <div class="chart-bar-container">
           <div class="chart-bar-fill" style="height: ${percent}%">
@@ -1640,12 +1794,12 @@ const App = {
         </div>
         <span class="chart-bar-label">${dayLabel}</span>
       `;
-      
+
       chartContainer.appendChild(barCol);
     });
 
-    const firstDate = dates[0].toLocaleDateString('pt-BR', {day: 'numeric', month: 'short'});
-    const lastDate = dates[6].toLocaleDateString('pt-BR', {day: 'numeric', month: 'short'});
+    const firstDate = dates[0].toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+    const lastDate = dates[6].toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
     document.getElementById('chart-date-range').textContent = `${firstDate} - ${lastDate}`;
   },
 
@@ -1666,11 +1820,11 @@ const App = {
   renderCharacterCard() {
     const char = this.state.character;
     const stats = this.getEffectiveStats(); // Usa atributos dinâmicos calculados
-    
+
     // Avatar
     let avatar = '🧙‍♂️';
     let classNameStr = 'Mago da Matemática';
-    
+
     if (char.class === 'writing') {
       avatar = '🗡️';
       classNameStr = 'Guerreiro da Escrita';
@@ -1681,31 +1835,31 @@ const App = {
       avatar = '💻';
       classNameStr = 'Druida do Código';
     }
-    
+
     document.getElementById('char-avatar').textContent = avatar;
     document.getElementById('char-name').textContent = char.name || 'Herói do Foco';
     document.getElementById('char-title').textContent = char.activeTitle;
     document.getElementById('char-class').textContent = classNameStr;
     document.getElementById('char-level').textContent = char.level;
-    
+
     // XP Bar
     const xpNeeded = this.getXpRequired(char.level);
     const xpPercent = Math.min(100, (char.xp / xpNeeded) * 100);
     document.getElementById('char-xp-ratio').textContent = `${char.xp} / ${xpNeeded} XP`;
     document.getElementById('char-xp-fill').style.width = `${xpPercent}%`;
-    
+
     // Atributos eficientes exibidos na interface (Base + Bonus)
     document.getElementById('stat-foc').textContent = stats.foc;
     document.getElementById('stat-con').textContent = stats.con;
     document.getElementById('stat-int').textContent = stats.int;
-    
+
     // Atualiza Slots de Equipamento Equipados na Sidebar
     this.renderEquippedGearVisuals();
-    
+
     // Skin do Card
     const cardEl = document.getElementById('char-card');
     cardEl.className = 'char-card glass-panel';
-    
+
     if (char.activeSkin === 'skin-aura-purple') {
       cardEl.classList.add('skin-aura-purple');
     } else if (char.activeSkin === 'skin-aura-gold') {
@@ -1798,9 +1952,9 @@ const App = {
   renderTimerDisplay() {
     const minutes = Math.floor(this.timer.timeLeft / 60);
     const seconds = this.timer.timeLeft % 60;
-    document.getElementById('timer-display').textContent = 
+    document.getElementById('timer-display').textContent =
       `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    
+
     const circle = document.getElementById('timer-progress');
     if (circle && this.timer.duration > 0) {
       const dashOffset = 282.7 * (1 - this.timer.timeLeft / this.timer.duration);
@@ -1815,11 +1969,11 @@ const App = {
     document.getElementById('monster-name').textContent = displayName;
     document.getElementById('monster-level').textContent = `Nível ${this.activeMonster.level}`;
     document.getElementById('monster-sprite').textContent = this.activeMonster.emoji;
-    
+
     const hpPercent = Math.min(100, (this.activeMonster.hp / this.activeMonster.maxHp) * 100);
     document.getElementById('monster-hp-text').textContent = `${Math.ceil(this.activeMonster.hp)} / ${this.activeMonster.maxHp} HP`;
     document.getElementById('monster-hp-fill').style.width = `${hpPercent}%`;
-    
+
     document.getElementById('monster-reward-xp').textContent = this.activeMonster.xpReward;
     document.getElementById('monster-reward-gold').textContent = this.activeMonster.goldReward;
   },
@@ -1828,24 +1982,24 @@ const App = {
     const dailyList = document.getElementById('daily-quest-list');
     const weeklyList = document.getElementById('weekly-quest-list');
     const campaignList = document.getElementById('campaign-quest-list');
-    
+
     dailyList.innerHTML = '';
     weeklyList.innerHTML = '';
     campaignList.innerHTML = '';
-    
+
     const questGroup = { daily: dailyList, weekly: weeklyList, campaign: campaignList };
     const counts = { daily: 0, weekly: 0, campaign: 0 };
-    
+
     this.state.quests.forEach(quest => {
       counts[quest.type]++;
       const targetList = questGroup[quest.type];
-      
+
       const card = document.createElement('div');
       card.className = 'quest-card glass-panel';
       if (quest.completed) card.style.opacity = '0.75';
-      
+
       const isAuto = quest.type === 'weekly' || quest.id.startsWith('c') || (quest.type === 'daily' && quest.trackingType);
-      
+
       let progressMarkup = '';
       if (quest.target && quest.target > 0) {
         const percent = Math.min(100, ((quest.progress || 0) / quest.target) * 100);
@@ -1862,7 +2016,7 @@ const App = {
           </div>
         `;
       }
-      
+
       card.innerHTML = `
         <label class="quest-checkbox-label">
           <input type="checkbox" class="quest-checkbox" data-id="${quest.id}" ${quest.completed ? 'checked' : ''} ${isAuto ? 'disabled style="cursor: not-allowed; opacity: 0.6;" title="Esta missão é avaliada automaticamente pelo sistema"' : ''}>
@@ -1882,10 +2036,10 @@ const App = {
           ` : ''}
         </div>
       `;
-      
+
       targetList.appendChild(card);
     });
-    
+
     Object.keys(questGroup).forEach(type => {
       if (counts[type] === 0) {
         const empty = document.createElement('div');
@@ -1902,7 +2056,7 @@ const App = {
   renderHabitRewards() {
     const rewardsList = document.getElementById('habit-rewards-list');
     rewardsList.innerHTML = '';
-    
+
     if (this.state.customRewards.length === 0) {
       rewardsList.innerHTML = `
         <div class="empty-state glass-panel" style="grid-column: 1/-1">
@@ -1912,11 +2066,11 @@ const App = {
       `;
       return;
     }
-    
+
     this.state.customRewards.forEach(reward => {
       const card = document.createElement('div');
       card.className = 'shop-card glass-panel';
-      
+
       card.innerHTML = `
         <div class="shop-card-info">
           <span class="shop-card-tag">Hábito Recompensa</span>
@@ -1933,7 +2087,7 @@ const App = {
           </div>
         </div>
       `;
-      
+
       rewardsList.appendChild(card);
     });
   },
@@ -1941,12 +2095,12 @@ const App = {
   renderEpicShop() {
     const listEl = document.getElementById('epic-shop-list');
     if (!listEl) return;
-    
+
     listEl.innerHTML = '';
-    
+
     const activeSubCatBtn = document.querySelector('#tab-skin-shop .shop-sections-nav .quest-tab-btn.active');
     const cat = activeSubCatBtn ? activeSubCatBtn.dataset.shopCat : 'equipments';
-    
+
     // Injeta o Baú de Gacha fixo no topo de qualquer categoria para incentivar as compras com desconto se Drone equipado
     let gachaCost = 120;
     const droneEquipped = this.state.character.equipment && this.state.character.equipment.accessory === 'eq-drone';
@@ -1978,10 +2132,10 @@ const App = {
       this.shopEquipments.forEach(eq => {
         const isUnlocked = this.state.unlockedEquipment.includes(eq.id);
         const isEquipped = this.state.character.equipment[eq.slot] === eq.id;
-        
+
         const card = document.createElement('div');
         card.className = `shop-card glass-panel ${isUnlocked ? 'unlocked' : ''}`;
-        
+
         let actionBtnMarkup = '';
         if (isEquipped) {
           actionBtnMarkup = `<button class="glass-btn success equip-eq-btn" data-id="${eq.id}">Desequipar</button>`;
@@ -2008,10 +2162,10 @@ const App = {
       this.shopSkins.forEach(skin => {
         const isUnlocked = skin.id === 'skin-default' || this.state.unlockedSkins.includes(skin.id);
         const isActive = this.state.character.activeSkin === skin.id;
-        
+
         const card = document.createElement('div');
         card.className = `shop-card glass-panel ${isUnlocked && skin.id !== 'skin-default' ? 'unlocked' : ''}`;
-        
+
         let actionBtnMarkup = '';
         if (isActive) {
           actionBtnMarkup = `<button class="glass-btn success" disabled>Equipado</button>`;
@@ -2025,7 +2179,7 @@ const App = {
             actionBtnMarkup = `<button class="glass-btn primary buy-skin-btn" data-id="${skin.id}" data-cost="${skin.cost}">Comprar</button>`;
           }
         }
-        
+
         card.innerHTML = `
           <div class="shop-card-info">
             <span class="shop-card-tag">Aura Cosmética</span>
@@ -2042,14 +2196,14 @@ const App = {
     } else if (cat === 'titles') {
       const standardTitle = { id: 'title-recruta', name: 'Recruta do Saber', cost: 0, desc: 'Título inicial do aprendiz de foco.' };
       const allTitles = [standardTitle, ...this.shopTitles];
-      
+
       allTitles.forEach(title => {
         const isUnlocked = title.cost === 0 || this.state.unlockedTitles.includes(title.id);
         const isActive = this.state.character.activeTitle === title.name;
-        
+
         const card = document.createElement('div');
         card.className = `shop-card glass-panel ${isUnlocked && title.cost > 0 ? 'unlocked' : ''}`;
-        
+
         let actionBtnMarkup = '';
         if (isActive) {
           actionBtnMarkup = `<button class="glass-btn success" disabled>Equipado</button>`;
@@ -2062,7 +2216,7 @@ const App = {
             actionBtnMarkup = `<button class="glass-btn primary buy-title-btn" data-id="${title.id}" data-cost="${title.cost}">Desbloquear</button>`;
           }
         }
-        
+
         card.innerHTML = `
           <div class="shop-card-info">
             <span class="shop-card-tag">Título Prestígio</span>
@@ -2080,7 +2234,7 @@ const App = {
       this.shopPotions.forEach(pot => {
         const card = document.createElement('div');
         card.className = `shop-card glass-panel`;
-        
+
         const activeSeconds = this.state.activeBuffs ? (this.state.activeBuffs[pot.type] || 0) : 0;
         let actionBtnMarkup = '';
         if (activeSeconds > 0) {
@@ -2091,7 +2245,7 @@ const App = {
         } else {
           actionBtnMarkup = `<button class="glass-btn primary buy-potion-btn" data-id="${pot.id}" data-cost="${pot.cost}">Beber 🧪</button>`;
         }
-        
+
         card.innerHTML = `
           <div class="shop-card-info">
             <span class="shop-card-tag">Poção Consumível</span>
@@ -2108,14 +2262,14 @@ const App = {
     } else if (cat === 'themes') {
       const standardTheme = { id: 'theme-default', name: 'Padrão Neon Dark', cost: 0, desc: 'O layout clássico escuro com roxo e verde fluorescente.', themeClass: 'default' };
       const allThemes = [standardTheme, ...this.shopThemes];
-      
+
       allThemes.forEach(theme => {
         const isUnlocked = theme.cost === 0 || this.state.unlockedThemes.includes(theme.id);
         const isActive = this.state.character.activeTheme === theme.themeClass;
-        
+
         const card = document.createElement('div');
         card.className = `shop-card glass-panel ${isUnlocked && theme.cost > 0 ? 'unlocked' : ''}`;
-        
+
         let actionBtnMarkup = '';
         if (isActive) {
           actionBtnMarkup = `<button class="glass-btn success" disabled>Equipado</button>`;
@@ -2124,7 +2278,7 @@ const App = {
         } else {
           actionBtnMarkup = `<button class="glass-btn primary buy-theme-btn" data-id="${theme.id}" data-cost="${theme.cost}">Comprar</button>`;
         }
-        
+
         card.innerHTML = `
           <div class="shop-card-info">
             <span class="shop-card-tag">Tema de Interface</span>
@@ -2157,16 +2311,16 @@ const App = {
     document.querySelectorAll('.nav-menu .nav-item').forEach(item => {
       item.addEventListener('click', (e) => {
         AudioSynth.playClick();
-        
+
         const clickedItem = e.currentTarget;
         const tabName = clickedItem.dataset.tab;
-        
+
         document.querySelectorAll('.nav-menu .nav-item').forEach(nav => nav.classList.remove('active'));
         clickedItem.classList.add('active');
-        
+
         document.querySelectorAll('.view-tab').forEach(tab => tab.classList.remove('active'));
         document.getElementById(`tab-${tabName}`).classList.add('active');
-        
+
         if (tabName === 'analytics') {
           this.renderAnalyticsDashboard();
         } else if (tabName === 'skin-shop') {
@@ -2188,11 +2342,11 @@ const App = {
     document.getElementById('timer-start').addEventListener('click', () => {
       this.startTimer();
     });
-    
+
     document.getElementById('timer-pause').addEventListener('click', () => {
       this.pauseTimer();
     });
-    
+
     document.getElementById('timer-reset').addEventListener('click', () => {
       this.abortTimer();
     });
@@ -2202,10 +2356,10 @@ const App = {
       btn.addEventListener('click', (e) => {
         AudioSynth.playClick();
         const type = e.currentTarget.dataset.questType;
-        
+
         document.querySelectorAll('#tab-quests .quest-tabs-header .quest-tab-btn').forEach(b => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
-        
+
         document.querySelectorAll('#tab-quests .quest-pane').forEach(p => p.classList.remove('active'));
         document.getElementById(`pane-${type}`).classList.add('active');
       });
@@ -2215,10 +2369,10 @@ const App = {
     document.querySelectorAll('#tab-skin-shop .shop-sections-nav .quest-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         AudioSynth.playClick();
-        
+
         document.querySelectorAll('#tab-skin-shop .shop-sections-nav .quest-tab-btn').forEach(b => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
-        
+
         this.renderEpicShop();
       });
     });
@@ -2329,10 +2483,10 @@ const App = {
       const name = document.getElementById('intro-player-name').value.trim() || 'Estudante Lendário';
       const activeClassCard = document.querySelector('.class-card.active');
       const classId = activeClassCard ? activeClassCard.dataset.class : 'math';
-      
+
       this.state.character.name = name;
       this.state.character.class = classId;
-      
+
       if (classId === 'math') {
         this.state.character.foc = 12;
         this.state.character.con = 10;
@@ -2350,12 +2504,12 @@ const App = {
         this.state.character.con = 10;
         this.state.character.int = 11;
       }
-      
+
       this.closeModal('intro-modal');
       this.saveState();
       this.renderAll();
       this.spawnMonster();
-      
+
       AudioSynth.playLevelUp();
       this.addLog(`✨ Bem-vindo, ${name}! Sua jornada de estudos gamificados começou!`, "victory");
     });
@@ -2375,15 +2529,15 @@ const App = {
       const desc = document.getElementById('quest-desc-input').value.trim();
       const type = document.getElementById('quest-type-select').value;
       const targetMinutes = parseInt(document.getElementById('quest-weekly-target').value) || 60;
-      
+
       if (!title) {
         alert("A missão necessita de um nome!");
         return;
       }
-      
+
       this.addQuest(title, desc, type, targetMinutes);
       this.closeModal('add-quest-modal');
-      
+
       document.getElementById('quest-title-input').value = '';
       document.getElementById('quest-desc-input').value = '';
     });
@@ -2396,15 +2550,15 @@ const App = {
       const name = document.getElementById('reward-name-input').value.trim();
       const desc = document.getElementById('reward-desc-input').value.trim();
       const cost = parseInt(document.getElementById('reward-cost-input').value) || 50;
-      
+
       if (!name) {
         alert("A recompensa necessita de um nome!");
         return;
       }
-      
+
       this.addCustomReward(name, desc, cost);
       this.closeModal('add-reward-modal');
-      
+
       document.getElementById('reward-name-input').value = '';
       document.getElementById('reward-desc-input').value = '';
     });
@@ -2413,7 +2567,7 @@ const App = {
       if (e.target.id === 'modal-overlay') {
         const intro = document.getElementById('intro-modal');
         if (intro && intro.style.display !== 'none') return;
-        
+
         // Bloqueia fechamento se o gacha ainda estiver abrindo
         const splashIcon = document.getElementById('splash-icon');
         if (splashIcon && splashIcon.classList.contains('chest-unboxing')) return;
@@ -2441,27 +2595,27 @@ const App = {
   // ==========================================================================
   openModal(modalId, closable = true) {
     AudioSynth.playClick();
-    
+
     const overlay = document.getElementById('modal-overlay');
     overlay.classList.add('active');
-    
+
     overlay.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none');
-    
+
     const target = document.getElementById(modalId);
     target.style.display = 'block';
-    
+
     overlay.dataset.closable = String(closable);
   },
 
   closeModal(modalId) {
     AudioSynth.playClick();
-    
+
     const overlay = document.getElementById('modal-overlay');
     document.getElementById(modalId).style.display = 'none';
-    
+
     const activeModals = Array.from(overlay.querySelectorAll('.modal-content'))
       .filter(m => m.style.display !== 'none');
-      
+
     if (activeModals.length === 0) {
       overlay.classList.remove('active');
     }
@@ -2470,7 +2624,7 @@ const App = {
   closeActiveModals() {
     const overlay = document.getElementById('modal-overlay');
     if (overlay.dataset.closable === 'false') return;
-    
+
     overlay.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none');
     overlay.classList.remove('active');
   },
@@ -2479,13 +2633,13 @@ const App = {
     const splashIcon = document.getElementById('splash-icon');
     const splashTitle = document.getElementById('splash-title');
     const splashText = document.getElementById('splash-reward-text');
-    
+
     if (splashIcon && splashTitle && splashText) {
       splashIcon.textContent = icon;
       splashTitle.textContent = title;
       splashText.innerHTML = message;
     }
-    
+
     this.openModal('splash-modal');
   },
 
@@ -2495,18 +2649,166 @@ const App = {
   addLog(message, type = 'info') {
     const logContainer = document.getElementById('log-container');
     if (!logContainer) return;
-    
+
     const entry = document.createElement('div');
     entry.className = `log-entry ${type}`;
-    
-    const timeStr = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+
+    const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     entry.textContent = `[${timeStr}] ${message}`;
-    
+
     logContainer.appendChild(entry);
     logContainer.scrollTop = logContainer.scrollHeight;
-  }
-};
+  },
 
+  // ============================================================
+  // AUTH SCREEN UI — Show / Hide / Reset
+  // ============================================================
+
+  /** Exibe o auth overlay e turva o app */
+  showAuthScreen() {
+    const screen = document.getElementById('auth-screen');
+    const app = document.querySelector('.app-container');
+    if (screen) screen.classList.remove('hidden');
+    if (app) app.classList.add('auth-blurred');
+  },
+
+  /** Esconde o auth overlay e restaura o app */
+  hideAuthScreen() {
+    const screen = document.getElementById('auth-screen');
+    const app = document.querySelector('.app-container');
+    if (screen) screen.classList.add('hidden');
+    if (app) app.classList.remove('auth-blurred');
+  },
+
+  /** Reinicia o estado e volta à tela de login (após logout) */
+  resetToAuthScreen() {
+    // Limpa cache local
+    localStorage.removeItem('dopastudy_save');
+    // Para qualquer timer ativo
+    if (this.timer.intervalId) {
+      clearInterval(this.timer.intervalId);
+      this.timer.intervalId = null;
+    }
+    // Oculta sidebar user info
+    const bar = document.getElementById('user-info-bar');
+    if (bar) bar.style.display = 'none';
+    // Mostra tela de login
+    this.showAuthScreen();
+  },
+
+  /** Exibe e-mail do jogador + botão de logout na sidebar */
+  renderUserInfo() {
+    const bar = document.getElementById('user-info-bar');
+    const email = document.getElementById('user-email-display');
+    if (bar && SupabaseAuth.currentUser) {
+      bar.style.display = 'flex';
+      if (email) email.textContent = SupabaseAuth.currentUser.email || 'Aventureiro';
+    }
+  },
+
+  // ============================================================
+  // AUTH EVENT LISTENERS — Form login/registro + logout
+  // ============================================================
+  setupAuthEventListeners() {
+    let authMode = 'login'; // 'login' | 'register'
+
+    // --- Troca de aba Login / Registro ---
+    document.querySelectorAll('.auth-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        authMode = btn.dataset.authMode;
+        document.querySelectorAll('.auth-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const submitText = document.getElementById('auth-submit-text');
+        if (submitText) {
+          submitText.textContent = authMode === 'login' ? '▶ Entrar na Conta' : '✨ Criar Conta RPG';
+        }
+        // Limpa erros ao trocar de modo
+        this._setAuthError('');
+      });
+    });
+
+    // --- Submit do formulário (login ou registro) ---
+    const form = document.getElementById('auth-form');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('auth-email')?.value?.trim();
+        const password = document.getElementById('auth-password')?.value;
+
+        if (!email || !password) {
+          this._setAuthError('❌ Preencha e-mail e senha para continuar.');
+          return;
+        }
+        if (password.length < 6) {
+          this._setAuthError('❌ A senha deve ter ao menos 6 caracteres.');
+          return;
+        }
+
+        this._setAuthLoading(true);
+        this._setAuthError('');
+
+        try {
+          if (authMode === 'login') {
+            await SupabaseAuth.signIn(email, password);
+          } else {
+            await SupabaseAuth.signUp(email, password);
+          }
+          // O bootGame é acionado pelo onAuthChange listener no init()
+          // mas chamamos diretamente também para garantir imediatismo:
+          await this.bootGame();
+        } catch (err) {
+          const msg = this._translateAuthError(err.message);
+          this._setAuthError(msg);
+          this._setAuthLoading(false);
+        }
+      });
+    }
+
+    // --- Botão Logout na sidebar ---
+    const logoutBtn = document.getElementById('btn-logout');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        await SupabaseAuth.signOut();
+        this.resetToAuthScreen();
+      });
+    }
+  },
+
+  /** Ativa/desativa o loader e botão de submit */
+  _setAuthLoading(active) {
+    const btn = document.getElementById('auth-submit');
+    const text = document.getElementById('auth-submit-text');
+    const loader = document.getElementById('auth-loader');
+    if (!btn) return;
+    btn.disabled = active;
+    if (text) text.style.display = active ? 'none' : 'inline';
+    if (loader) loader.style.display = active ? 'inline-block' : 'none';
+  },
+
+  /** Exibe / limpa mensagem de erro no form de auth */
+  _setAuthError(msg) {
+    const el = document.getElementById('auth-error');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  },
+
+  /** Traduz mensagens de erro do Supabase para português */
+  _translateAuthError(msg = '') {
+    if (msg.includes('Invalid login credentials')) return '❌ E-mail ou senha incorretos. Tente novamente.';
+    if (msg.includes('Email not confirmed')) return '⚠️ Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.';
+    if (msg.includes('User already registered')) return '❌ Este e-mail já está cadastrado. Faça login!';
+    if (msg.includes('Password should be')) return '❌ A senha deve ter ao menos 6 caracteres.';
+    if (msg.includes('Unable to validate')) return '❌ Credenciais inválidas. Verifique e tente novamente.';
+    return `❌ Erro: ${msg}`;
+  }
+
+}; // fim do objeto App
+
+// ============================================================
+// BOOT — Dispara a inicialização assíncrona após o DOM carregar
+// ============================================================
 window.addEventListener('DOMContentLoaded', () => {
-  App.init();
+  App.init().catch(err => console.error('[DopaStudy] Erro crítico na inicialização:', err));
 });
