@@ -378,6 +378,11 @@ const App = {
     lastResets: {
       daily: '',
       weekly: ''
+    },
+    customTimerDurations: {
+      focus: 25,
+      shortBreak: 5,
+      longBreak: 15
     }
   },
 
@@ -411,7 +416,7 @@ const App = {
     { id: 'eq-oculos', name: 'Óculos Cyber-Visão HUD', slot: 'accessory', bonus: 3, bonusType: 'int', cost: 100, emoji: '🕶️', desc: 'Projeta dados cognitivos em tempo real. (+3 INT) | Passiva: +5% chance de crítico a cada tick do timer.' },
     { id: 'eq-catana', name: 'Teclado de Plasma Cyberpunk', slot: 'weapon', bonus: 5, bonusType: 'foc', cost: 200, emoji: '🗡️', desc: 'Injeta plasma nas suas linhas de código. (+5 FOC) | Passiva: +25% DPS contra monstros.' },
     { id: 'eq-jaqueta', name: 'Jaqueta de Couro Synthwave', slot: 'armor', bonus: 5, bonusType: 'con', cost: 250, emoji: '🧥', desc: 'Bloqueia vibrações de procrastinação. (+5 CON) | Passiva: -50% penalidades ao desistir/falhar.' },
-    { id: 'eq-drone', name: 'Drone Auxiliar de IA Suprema', slot: 'accessory', bonus: 12, bonusType: 'int', cost: 450, emoji: '🛸', desc: 'Drone flutuante de IA Suprema. (+8 INT, +4 FOC) | Passiva: +2 GP por segundo de foco e -15% custo do Gacha.' },
+    { id: 'eq-drone', name: 'Drone Auxiliar de IA Suprema', slot: 'accessory', bonus: 12, bonusType: 'int', cost: 450, emoji: '🛸', desc: 'Drone flutuante de IA Suprema. (+8 INT, +4 FOC) | Passiva: +1 GP a cada 10s de foco, +30% Ouro de monstros e -15% custo do Gacha.' },
 
     { id: 'eq-excalibur', name: 'Teclado Mecânico Excalibur', slot: 'weapon', bonus: 10, bonusType: 'foc', cost: 450, emoji: '⌨️', desc: 'Teclas táteis barulhentas para foco auditivo absoluto. (+10 FOC)' },
     { id: 'eq-livro', name: 'Grimório de Engenharia Semântica', slot: 'weapon', bonus: 8, bonusType: 'int', cost: 380, emoji: '📖', desc: 'Páginas sagradas de conhecimento computacional avançado. (+8 INT)' },
@@ -575,6 +580,18 @@ const App = {
     if (!this.state.unlockedThemes) this.state.unlockedThemes = ['default'];
     if (!this.state.activeBuffs) this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
     if (this.state.character.campaignStage === undefined) this.state.character.campaignStage = 1;
+    if (!this.state.customTimerDurations) this.state.customTimerDurations = { focus: 25, shortBreak: 5, longBreak: 15 };
+
+    // Sincroniza os inputs HTML com os valores salvos
+    const savedFocus = this.state.customTimerDurations.focus || 25;
+    const savedShort = this.state.customTimerDurations.shortBreak || 5;
+    const savedLong  = this.state.customTimerDurations.longBreak || 15;
+    const elFocus = document.getElementById('custom-minutes');
+    const elShort = document.getElementById('custom-short-break');
+    const elLong  = document.getElementById('custom-long-break');
+    if (elFocus) elFocus.value = savedFocus;
+    if (elShort) elShort.value = savedShort;
+    if (elLong)  elLong.value  = savedLong;
 
     // Garante que as recompensas do sistema tenham sempre o custo correto exato
     const systemRewardCosts = { r1: 40, r2: 60, r3: 100, r4: 150 };
@@ -911,13 +928,14 @@ const App = {
     const tierHpMult = Math.pow(2.0, t - 1);
     const maxHp = Math.max(30, Math.floor(40 * indexHpMult * tierHpMult * levelMult));
 
-    // Reward Scaling
-    const indexXpMult = isBoss ? 6.0 : Math.pow(1.25, idx - 1);
-    const indexGoldMult = isBoss ? 5.0 : Math.pow(1.20, idx - 1);
-    const tierRewardMult = Math.pow(1.8, t - 1);
-    
-    const xpReward = Math.max(5, Math.floor(5 * indexXpMult * tierRewardMult * levelMult));
-    const goldReward = Math.max(3, Math.floor(3 * indexGoldMult * tierRewardMult * levelMult));
+    // Reward Scaling — Curva Exponencial (valor inicial em secondsFocused = 0)
+    let xpReward = Math.floor(5 * Math.pow(1.10, t));
+    let goldReward = Math.floor(2 * Math.pow(1.12, t));
+
+    if (isBoss) {
+      xpReward += 4;
+      goldReward += 3;
+    }
 
     return {
       name: baseName,
@@ -929,7 +947,8 @@ const App = {
       level: level + t - 1,
       tier: t,
       index: idx,
-      isBoss: isBoss
+      isBoss: isBoss,
+      secondsFocused: 0
     };
   },
 
@@ -956,11 +975,11 @@ const App = {
   defeatMonsterMidTimer() {
     AudioSynth.playMonsterDefeated();
 
-    // Combo multiplier
-    const comboMultiplier = 1 + (this.state.focusCombo * 0.1);
-    const doubleXpMultiplier = (this.state.activeBuffs && this.state.activeBuffs.doubleXp > 0) ? 2 : 1;
-    const xpGained = Math.round(this.activeMonster.xpReward * comboMultiplier * doubleXpMultiplier);
-    const goldGained = Math.round(this.activeMonster.goldReward * comboMultiplier);
+    // As recompensas já foram calculadas dinamicamente no tick() com curva exponencial,
+    // incluindo combo, poção de XP duplo e passiva do Drone (+30% ouro).
+    // Fluxo: Valor_Base_Nerfado -> Aplica_Passiva_Item -> Aplica_Pocao_Ativa -> Salva_Estado
+    const xpGained = this.activeMonster.xpReward;
+    const goldGained = this.activeMonster.goldReward;
 
     this.addXp(xpGained);
     this.addGold(goldGained);
@@ -971,7 +990,8 @@ const App = {
     this.raidMonstersDefeated = (this.raidMonstersDefeated || 0) + 1;
 
     const displayName = this.getMonsterDisplayName();
-    const buffSuffix = doubleXpMultiplier > 1 ? " [XP DUPLO ATIVO! 🧪]" : "";
+    const doubleXpActive = (this.state.activeBuffs && this.state.activeBuffs.doubleXp > 0);
+    const buffSuffix = doubleXpActive ? " [XP DUPLO ATIVO! 🧪]" : "";
     this.addLog(`👾 Derrotaste o ${displayName}! +${xpGained} XP${buffSuffix} e +${goldGained} GP! (Combo x${this.state.focusCombo} 🔥)`, "victory");
 
     this.state.analytics.monstersDefeated += 1;
@@ -1027,20 +1047,30 @@ const App = {
 
       let minutes = 25;
       if (mode === 'focus') {
-        // Lê os minutos personalizados do input se disponível
+        // Lê os minutos personalizados do input de Foco
         const customInput = document.getElementById('custom-minutes');
         minutes = customInput ? parseInt(customInput.value) || 25 : 25;
+        this.state.customTimerDurations.focus = minutes;
         modeBtnFocus.classList.add('primary');
+        modeBtnFocus.textContent = `Foco (${minutes}m)`;
         document.getElementById('timer-mode-label').textContent = "Foco ativo";
         document.getElementById('timer-progress').classList.remove('break-mode');
       } else if (mode === 'short-break') {
-        minutes = 5;
+        // Lê os minutos personalizados do input de Pausa Curta
+        const shortInput = document.getElementById('custom-short-break');
+        minutes = shortInput ? parseInt(shortInput.value) || 5 : 5;
+        this.state.customTimerDurations.shortBreak = minutes;
         modeBtnShort.classList.add('primary');
+        modeBtnShort.textContent = `Pausa (${minutes}m)`;
         document.getElementById('timer-mode-label').textContent = "Pausa Rápida";
         document.getElementById('timer-progress').classList.add('break-mode');
       } else if (mode === 'long-break') {
-        minutes = 15;
+        // Lê os minutos personalizados do input de Intervalo Longo
+        const longInput = document.getElementById('custom-long-break');
+        minutes = longInput ? parseInt(longInput.value) || 15 : 15;
+        this.state.customTimerDurations.longBreak = minutes;
         modeBtnLong.classList.add('primary');
+        modeBtnLong.textContent = `Intervalo (${minutes}m)`;
         document.getElementById('timer-mode-label').textContent = "Pausa Longa";
         document.getElementById('timer-progress').classList.add('break-mode');
       }
@@ -1055,9 +1085,10 @@ const App = {
   startTimer() {
     AudioSynth.playClick();
 
-    // Se estiver em modo de foco e não rodando, garante carregar o tempo personalizado do input
+    // Se estiver em modo de foco e não rodando, carrega o tempo do input de Foco
     if (this.timer.mode === 'focus' && !this.timer.intervalId) {
       const customMin = parseInt(document.getElementById('custom-minutes').value) || 25;
+      this.state.customTimerDurations.focus = customMin;
       this.timer.duration = customMin * 60;
       // Só sobrescreve timeLeft se o timer não foi iniciado/despausado (estava no início)
       if (this.timer.timeLeft === this.timer.duration || this.timer.timeLeft === 1500) {
@@ -1066,9 +1097,28 @@ const App = {
       this.timer.isCustom = true;
     }
 
+    // Se estiver em modo short-break e não rodando, carrega o tempo do input de Pausa Curta
+    if (this.timer.mode === 'short-break' && !this.timer.intervalId) {
+      const shortMin = parseInt(document.getElementById('custom-short-break').value) || 5;
+      this.state.customTimerDurations.shortBreak = shortMin;
+      this.timer.duration = shortMin * 60;
+      this.timer.timeLeft = this.timer.duration;
+      this.timer.isCustom = true;
+    }
+
+    // Se estiver em modo long-break e não rodando, carrega o tempo do input de Intervalo
+    if (this.timer.mode === 'long-break' && !this.timer.intervalId) {
+      const longMin = parseInt(document.getElementById('custom-long-break').value) || 15;
+      this.state.customTimerDurations.longBreak = longMin;
+      this.timer.duration = longMin * 60;
+      this.timer.timeLeft = this.timer.duration;
+      this.timer.isCustom = true;
+    }
+
     // Caso seja modo personalizado de foco vindo de estado ocioso
     if (this.timer.mode === 'idle') {
       const customMin = parseInt(document.getElementById('custom-minutes').value) || 25;
+      this.state.customTimerDurations.focus = customMin;
       this.timer.mode = 'focus';
       this.timer.duration = customMin * 60;
       this.timer.timeLeft = this.timer.duration;
@@ -1252,6 +1302,38 @@ const App = {
           // Incrementa contador contínuo
           this.continuousFocusTicks++;
 
+          // CÁLCULO DINÂMICO DE RECOMPENSAS (Curva Exponencial e Tempo de Foco)
+          if (this.activeMonster) {
+            this.activeMonster.secondsFocused = (this.activeMonster.secondsFocused || 0) + 1;
+
+            const t = this.activeMonster.tier || 1;
+            const tempo_focado_segundos = this.activeMonster.secondsFocused;
+
+            // Fórmulas da Curva Exponencial (Progressão End Game)
+            let baseXp = Math.floor(5 * Math.pow(1.10, t)) + (tempo_focado_segundos * 0.05);
+            let baseGold = Math.floor(2 * Math.pow(1.12, t)) + Math.floor(tempo_focado_segundos * 0.02);
+
+            // Condicional de Bônus para Bosses (+2 a +4)
+            if (this.activeMonster.isBoss) {
+              baseXp += 4;   // Bosses dão +4 de XP base
+              baseGold += 3; // Bosses dão +3 de Ouro base
+            }
+
+            // Aplicação dos Multiplicadores Técnicos
+            const comboMultiplier = 1 + (this.state.focusCombo * 0.1);
+            const doubleXpMultiplier = (this.state.activeBuffs && this.state.activeBuffs.doubleXp > 0) ? 2 : 1;
+            const hasDrone = this.state.character.equipment && this.state.character.equipment.accessory === 'eq-drone';
+
+            const xpGained = Math.round(baseXp * comboMultiplier * doubleXpMultiplier);
+            let goldGained = Math.round(baseGold * comboMultiplier);
+            if (hasDrone) {
+              goldGained = Math.round(goldGained * 1.3); // +30% de ouro passiva do Drone
+            }
+
+            this.activeMonster.xpReward = xpGained;
+            this.activeMonster.goldReward = goldGained;
+          }
+
           // CÁLCULO DE DANO
           const stats = this.getEffectiveStats();
           const weaponPassiva = (this.state.character.equipment && this.state.character.equipment.weapon === 'eq-catana') ? 1.25 : 1.0;
@@ -1262,11 +1344,11 @@ const App = {
           this.activeMonster.hp = Math.max(0, this.activeMonster.hp - dps);
           this.renderMonster();
 
-          // PASSIVA DO DRONE
+          // PASSIVA DO DRONE (Nerfado: +1 GP a cada 10s contínuos de foco)
           const hasDrone = this.state.character.equipment && this.state.character.equipment.accessory === 'eq-drone';
-          if (hasDrone) {
-            this.addGold(2);
-            this.showFloatingText('+2 GP 🪙', 'floating-loot');
+          if (hasDrone && this.continuousFocusTicks > 0 && this.continuousFocusTicks % 10 === 0) {
+            this.addGold(1);
+            this.showFloatingText('+1 GP 🪙', 'floating-loot');
           }
 
           // PASSIVA DOS ÓCULOS HUD
@@ -1307,7 +1389,7 @@ const App = {
     }
   },
 
-  // Ataque crítico direto no monstro
+  // Ataque crítico direto no monstro (Recompensa nerfada: baseada no nível do personagem)
   triggerCriticalAttack(normalDps) {
     AudioSynth.playCriticalHit();
 
@@ -1315,11 +1397,13 @@ const App = {
     this.activeMonster.hp = Math.max(0, this.activeMonster.hp - critDamage);
     this.renderMonster();
 
-    this.addGold(5);
+    // GP dinâmico baseado no nível do personagem (nerf do estático +5 GP)
+    const critGold = Math.max(1, Math.floor(this.state.character.level * 0.5));
+    this.addGold(critGold);
 
     const displayName = this.getMonsterDisplayName();
-    this.addLog(`💥 ATAQUE CRÍTICO! Causaste ${Math.round(critDamage)} de dano massivo no ${displayName}! +5 GP!`, "damage");
-    this.showFloatingText('💥 CRÍTICO! +5 GP', 'floating-loot');
+    this.addLog(`💥 ATAQUE CRÍTICO! Causaste ${Math.round(critDamage)} de dano massivo no ${displayName}! +${critGold} GP!`, "damage");
+    this.showFloatingText(`💥 CRÍTICO! +${critGold} GP`, 'floating-loot');
   },
 
   showFloatingText(text, className = 'floating-loot') {
@@ -1905,13 +1989,13 @@ const App = {
             // Sorteio
             const rand = Math.random();
             if (rand < 0.60) {
-              // 60% Potion +20 XP
-              this.addXp(20);
+              // 60% Potion +15 XP (nerfado de +20 XP para controlar inflação)
+              this.addXp(15);
               AudioSynth.playQuestComplete();
               splashIcon.textContent = '🧪';
               splashTitle.textContent = 'Drop Comum! 🧪';
-              splashText.innerHTML = 'Você obteve uma <strong>Poção de Foco</strong>!<br>Concede +20 XP imediatos ao seu herói.';
-              this.addLog(`📦 Gacha: Poção de Foco obtida (+20 XP).`, "victory");
+              splashText.innerHTML = 'Você obteve uma <strong>Poção de Foco</strong>!<br>Concede +15 XP imediatos ao seu herói.';
+              this.addLog(`📦 Gacha: Poção de Foco obtida (+15 XP).`, "victory");
             } else if (rand < 0.90) {
               // 30% Rares Title: Imparavel ou Silicio
               const titleId = Math.random() < 0.5 ? 'title-imparavel' : 'title-silicio';
@@ -2742,6 +2826,48 @@ const App = {
 
       customMinutesInput.addEventListener('click', handleQuickClick);
       customMinutesInput.addEventListener('focus', handleQuickClick);
+    }
+
+    // 3c. Listeners para Pausa Curta personalizada
+    const shortBreakInput = document.getElementById('custom-short-break');
+    if (shortBreakInput) {
+      const updateShortBreak = () => {
+        if (!this.timer.intervalId) {
+          const val = parseInt(shortBreakInput.value) || 5;
+          this.state.customTimerDurations.shortBreak = val;
+          const btn = document.querySelector('[data-mode="short-break"]');
+          if (btn) btn.textContent = `Pausa (${val}m)`;
+          if (this.timer.mode === 'short-break') {
+            this.timer.duration = val * 60;
+            this.timer.timeLeft = this.timer.duration;
+            this.renderTimerDisplay();
+          }
+          this.saveState();
+        }
+      };
+      shortBreakInput.addEventListener('input', updateShortBreak);
+      shortBreakInput.addEventListener('change', updateShortBreak);
+    }
+
+    // 3d. Listeners para Intervalo Longo personalizado
+    const longBreakInput = document.getElementById('custom-long-break');
+    if (longBreakInput) {
+      const updateLongBreak = () => {
+        if (!this.timer.intervalId) {
+          const val = parseInt(longBreakInput.value) || 15;
+          this.state.customTimerDurations.longBreak = val;
+          const btn = document.querySelector('[data-mode="long-break"]');
+          if (btn) btn.textContent = `Intervalo (${val}m)`;
+          if (this.timer.mode === 'long-break') {
+            this.timer.duration = val * 60;
+            this.timer.timeLeft = this.timer.duration;
+            this.renderTimerDisplay();
+          }
+          this.saveState();
+        }
+      };
+      longBreakInput.addEventListener('input', updateLongBreak);
+      longBreakInput.addEventListener('change', updateLongBreak);
     }
 
     // 4. Modos da Sub-Aba de Missões

@@ -229,11 +229,25 @@
               <button id="timer-reset" class="glass-btn danger" disabled>⏹ Desistir</button>
             </div>
 
-            <!-- Custom focus duration -->
+            <!-- Custom durations (Foco / Pausa Curta / Intervalo) -->
             <div class="custom-time-input">
-              <span>Tempo Personalizado:</span>
-              <input type="number" id="custom-minutes" min="1" max="180" value="25">
-              <span>min</span>
+              <div class="custom-time-group">
+                <label class="custom-time-label">⚔️ Foco</label>
+                <input type="number" id="custom-minutes" min="1" max="180" value="25">
+                <span>min</span>
+              </div>
+              <div class="custom-time-divider"></div>
+              <div class="custom-time-group">
+                <label class="custom-time-label">☕ Pausa</label>
+                <input type="number" id="custom-short-break" min="1" max="60" value="5">
+                <span>min</span>
+              </div>
+              <div class="custom-time-divider"></div>
+              <div class="custom-time-group">
+                <label class="custom-time-label">🌙 Intervalo</label>
+                <input type="number" id="custom-long-break" min="1" max="90" value="15">
+                <span>min</span>
+              </div>
             </div>
 
             <!-- Subject Link input -->

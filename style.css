@@ -848,18 +848,42 @@ nav.nav-menu {
 .custom-time-input {
   display: flex;
   align-items: center;
-  gap: 8px;
   width: 100%;
   background: rgba(0, 0, 0, 0.15);
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--card-border);
+  gap: 0;
 }
 
-.custom-time-input span {
-  font-size: 0.8rem;
-  color: var(--text-sub);
+.custom-time-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.custom-time-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   white-space: nowrap;
+}
+
+.custom-time-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--card-border);
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+.custom-time-group span {
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 .custom-time-input input {
@@ -868,9 +892,27 @@ nav.nav-menu {
   color: var(--text-main);
   font-family: var(--font-mono);
   width: 100%;
-  text-align: right;
+  text-align: center;
   outline: none;
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .custom-time-input {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .custom-time-divider {
+    width: 100%;
+    height: 1px;
+    margin: 0;
+  }
+  .custom-time-group {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
 }
 
 /* Counter Attack / Pause Warnings */
