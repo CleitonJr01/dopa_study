@@ -1829,51 +1829,64 @@ const App = {
   },
 
   // ==========================================================================
-  // PROGRESSÃO DE NÍVEL, XP E GOLD
+  // PROGRESSÃO DE NÍVEL, XP E GOLD — SEGURO VIA RPC
   // ==========================================================================
   getXpRequired(level) {
     return Math.floor(100 * Math.pow(level, 1.25));
   },
 
-  addXp(amount) {
+  async addGoldAndXp(gold, xp) {
+    if (!SupabaseAuth.currentUser) return;
+    const userId = SupabaseAuth.currentUser.id;
+    try {
+      const oldLevel = this.state.character.level || 1;
+      const { data, error } = await supabaseClient.rpc('dopastudy_add_gold_xp', {
+        gold_to_add: Number(gold),
+        xp_to_add: Number(xp)
+      });
+      if (error) throw error;
+      if (data) {
+        this.state = {
+          ...this.state,
+          ...data,
+          character: { ...this.state.character, ...data.character },
+          analytics: { ...this.state.analytics, ...data.analytics }
+        };
+        // Salva localmente
+        try {
+          localStorage.setItem(`dopastudy_state_${userId}`, JSON.stringify(this.state));
+        } catch (_) {}
+
+        // Verifica se subiu de nível para tocar som/splash
+        const newLevel = this.state.character.level || 1;
+        if (newLevel > oldLevel) {
+          this.triggerLevelUpEffects();
+        }
+
+        this.renderCharacterCard();
+        this.renderGold();
+        this.renderAttributesTab();
+      }
+    } catch (err) {
+      console.error("Erro na RPC dopastudy_add_gold_xp:", err);
+    }
+  },
+
+  async addXp(amount) {
     const stats = this.getEffectiveStats();
-    // Buff de intelecto efetivo (+1% XP por ponto)
     const intBonus = 1 + stats.int * 0.01;
     const finalAmount = Math.round(amount * intBonus);
+    await this.addGoldAndXp(0, finalAmount);
+  },
 
-    this.state.character.xp += finalAmount;
-
-    let xpNeeded = this.getXpRequired(this.state.character.level);
-    let leveledUp = false;
-
-    while (this.state.character.xp >= xpNeeded) {
-      this.state.character.xp -= xpNeeded;
-      this.state.character.level++;
-
-      this.state.character.statPoints = (this.state.character.statPoints || 0) + 3;
-
-      leveledUp = true;
-      xpNeeded = this.getXpRequired(this.state.character.level);
-    }
-
-    if (leveledUp) {
-      this.triggerLevelUpEffects();
-    }
-
-    this.renderCharacterCard();
-    this.saveState();
+  async addGold(amount) {
+    await this.addGoldAndXp(amount, 0);
   },
 
   removeXp(amount) {
     this.state.character.xp = Math.max(0, this.state.character.xp - amount);
     this.renderCharacterCard();
     this.saveState();
-  },
-
-  addGold(amount) {
-    this.state.character.gold = Number(this.state.character.gold) + Number(amount);
-    this.renderGold();
-    this.saveData();
   },
 
   deductGold(amount) {
@@ -1896,10 +1909,6 @@ const App = {
     // Dispara validação de missões de campanha baseadas no novo nível
     this.checkCampaignQuests();
   },
-
-  // ==========================================================================
-  // QUADRO DE MISSÕES
-  // ==========================================================================
   addQuest(name, desc, type, targetMinutes = 0) {
     let xp = 20;
     let gold = 10;
@@ -2099,47 +2108,60 @@ const App = {
   // ==========================================================================
   // LOJA ÉPICA & GACHA
   // ==========================================================================
-  buyEpicItem(type, id, cost) {
+  async buyEpicItem(type, id, cost) {
+    if (!SupabaseAuth.currentUser) return;
+    const userId = SupabaseAuth.currentUser.id;
     try {
-      const currentGold = Number(this.state.character.gold);
-      const itemCost = Number(cost);
-      if (currentGold >= itemCost) {
-        if (this.deductGold(itemCost)) {
-          AudioSynth.playQuestComplete();
+      const { data, error } = await supabaseClient.rpc('dopastudy_buy_epic_item', {
+        item_type: type,
+        item_id: id,
+        item_cost: Number(cost)
+      });
 
-          if (type === 'skin') {
-            const skin = this.shopSkins.find(s => s.id === id);
-            const name = skin ? skin.name : 'Skin Desconhecida';
-            this.state.unlockedSkins.push(id);
-            this.addLog(`👑 Skin Desbloqueada: "${name}"!`, "victory");
-          } else if (type === 'title') {
-            const title = this.shopTitles.find(t => t.id === id);
-            const name = title ? title.name : 'Título Desconhecido';
-            this.state.unlockedTitles.push(id);
-            this.addLog(`👑 Título Desbloqueado: "${name}"!`, "victory");
-          } else if (type === 'theme') {
-            const theme = this.shopThemes.find(th => th.id === id);
-            const name = theme ? theme.name : 'Tema Desconhecido';
-            this.state.unlockedThemes.push(id);
-            this.addLog(`👑 Tema Desbloqueado: "${name}"!`, "victory");
-          } else if (type === 'equipment') {
-            const eq = this.shopEquipments.find(e => e.id === id);
-            const name = eq ? eq.name : 'Equipamento Desconhecido';
-            this.state.unlockedEquipment.push(id);
-            this.addLog(`🗡️ Equipamento Desbloqueado: "${name}"!`, "victory");
-          }
-
-          this.saveData();
-          this.checkCampaignQuests();
-          this.renderEpicShop();
-          this.renderCharacterCard();
-        }
-      } else {
+      if (error) {
         AudioSynth.playWarning();
-        alert("Ouro insuficiente para comprar este item!");
+        alert(error.message || "Erro ao efetuar compra.");
+        return;
+      }
+
+      if (data) {
+        AudioSynth.playQuestComplete();
+        this.state = {
+          ...this.state,
+          ...data,
+          character: { ...this.state.character, ...data.character }
+        };
+        // Atualiza cache local
+        try {
+          localStorage.setItem(`dopastudy_state_${userId}`, JSON.stringify(this.state));
+        } catch (_) {}
+
+        if (type === 'skin') {
+          const skin = this.shopSkins.find(s => s.id === id);
+          const name = skin ? skin.name : 'Skin Desconhecida';
+          this.addLog(`👑 Skin Desbloqueada: "${name}"!`, "victory");
+        } else if (type === 'title') {
+          const title = this.shopTitles.find(t => t.id === id);
+          const name = title ? title.name : 'Título Desconhecido';
+          this.addLog(`👑 Título Desbloqueado: "${name}"!`, "victory");
+        } else if (type === 'theme') {
+          const theme = this.shopThemes.find(th => th.id === id);
+          const name = theme ? theme.name : 'Tema Desconhecido';
+          this.addLog(`👑 Tema Desbloqueado: "${name}"!`, "victory");
+        } else if (type === 'equipment') {
+          const eq = this.shopEquipments.find(e => e.id === id);
+          const name = eq ? eq.name : 'Equipamento Desconhecido';
+          this.addLog(`🗡️ Equipamento Desbloqueado: "${name}"!`, "victory");
+        }
+
+        this.checkCampaignQuests();
+        this.renderEpicShop();
+        this.renderCharacterCard();
       }
     } catch (err) {
       console.error("Erro no fluxo de compra na loja:", err);
+      AudioSynth.playWarning();
+      alert("Erro ao conectar ao servidor para processar a compra.");
     }
   },
 
@@ -2216,7 +2238,9 @@ const App = {
     document.documentElement.setAttribute('data-theme', themeName);
   },
 
-  buyPotion(id, cost) {
+  async buyPotion(id, cost) {
+    if (!SupabaseAuth.currentUser) return;
+    const userId = SupabaseAuth.currentUser.id;
     try {
       const pot = this.shopPotions.find(p => p.id === id);
       if (!pot) {
@@ -2224,42 +2248,45 @@ const App = {
         return;
       }
 
-      const currentGold = Number(this.state.character.gold);
-      const potionCost = Number(cost);
+      const { data, error } = await supabaseClient.rpc('dopastudy_buy_potion', {
+        potion_id: id,
+        potion_cost: Number(cost),
+        potion_type: pot.type,
+        potion_duration: Number(pot.duration)
+      });
 
-      if (currentGold >= potionCost) {
-        if (this.deductGold(potionCost)) {
-          AudioSynth.playQuestComplete();
-
-          if (!this.state.activeBuffs) {
-            this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
-          }
-
-          const type = pot.type; 
-          const now = Date.now();
-          
-          // Se já tem um buff ativo do mesmo tipo, estende a expiração, senão cria a partir de agora
-          const currentExpire = this.state.activeBuffs[`${type}Expire`] || now;
-          this.state.activeBuffs[`${type}Expire`] = Math.max(now, currentExpire) + pot.duration * 1000;
-          
-          // Atualiza os segundos restantes
-          this.state.activeBuffs[type] = Math.max(0, Math.floor((this.state.activeBuffs[`${type}Expire`] - now) / 1000));
-
-          this.saveData();
-          this.renderEpicShop();
-          this.renderBuffsTimeline();
-          
-          // Garante que o timer está rodando
-          this.startBuffsTimer();
-
-          this.addLog(`🧪 Consumiu ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
-        }
-      } else {
+      if (error) {
         AudioSynth.playWarning();
-        alert("Ouro insuficiente para comprar esta poção!");
+        alert(error.message || "Erro ao comprar poção.");
+        return;
+      }
+
+      if (data) {
+        AudioSynth.playQuestComplete();
+        this.state = {
+          ...this.state,
+          ...data,
+          character: { ...this.state.character, ...data.character },
+          activeBuffs: { ...(this.state.activeBuffs || {}), ...(data.activeBuffs || {}) }
+        };
+        // Atualiza cache local
+        try {
+          localStorage.setItem(`dopastudy_state_${userId}`, JSON.stringify(this.state));
+        } catch (_) {}
+
+        this.renderEpicShop();
+        this.renderBuffsTimeline();
+        this.renderGold();
+
+        // Garante que o timer de buffs está rodando
+        this.startBuffsTimer();
+
+        this.addLog(`🧪 Consumiu ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
       }
     } catch (err) {
       console.error("Erro no fluxo de comprar poção:", err);
+      AudioSynth.playWarning();
+      alert("Erro ao conectar ao servidor para processar a compra da poção.");
     }
   },
 
@@ -2672,22 +2699,39 @@ const App = {
     });
   },
 
-  allocateStatPoint(stat) {
-    const char = this.state.character;
-    const statPoints = char.statPoints || 0;
+  async allocateStatPoint(stat) {
+    if (!SupabaseAuth.currentUser) return;
+    const userId = SupabaseAuth.currentUser.id;
+    try {
+      const { data, error } = await supabaseClient.rpc('dopastudy_allocate_stat_point', {
+        stat_name: stat
+      });
 
-    if (statPoints > 0) {
-      char.statPoints -= 1;
-      if (stat === 'foc') char.foc += 1;
-      if (stat === 'con') char.con += 1;
-      if (stat === 'int') char.int += 1;
+      if (error) {
+        console.warn("Erro na RPC dopastudy_allocate_stat_point:", error.message);
+        alert(error.message || "Erro ao alocar ponto de atributo.");
+        return;
+      }
 
-      AudioSynth.playClick();
-      this.addLog(`✨ Atributo ${stat.toUpperCase()} aprimorado! Restam ${char.statPoints} pontos.`, 'victory');
-      
-      this.renderAttributesTab();
-      this.renderCharacterCard();
-      this.saveState();
+      if (data) {
+        this.state = {
+          ...this.state,
+          ...data,
+          character: { ...this.state.character, ...data.character }
+        };
+        // Atualiza cache local
+        try {
+          localStorage.setItem(`dopastudy_state_${userId}`, JSON.stringify(this.state));
+        } catch (_) {}
+
+        AudioSynth.playClick();
+        this.addLog(`✨ Atributo ${stat.toUpperCase()} aprimorado! Restam ${this.state.character.statPoints || 0} pontos.`, 'victory');
+
+        this.renderAttributesTab();
+        this.renderCharacterCard();
+      }
+    } catch (err) {
+      console.error("Erro ao alocar ponto de atributo:", err);
     }
   },
 
