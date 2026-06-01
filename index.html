@@ -26,7 +26,10 @@
         <div class="char-avatar-container">
           <div id="char-avatar" class="char-avatar">🧙‍♂️</div>
         </div>
-        <h2 id="char-name" class="char-name">Herói do Foco</h2>
+        <div class="char-name-row">
+          <h2 id="char-name" class="char-name">Herói do Foco</h2>
+          <button id="btn-edit-name" class="btn-edit-name" title="Mudar nome do herói">✏️</button>
+        </div>
         <div id="char-title" class="char-title">Recruta do Saber</div>
         <div id="char-class" class="char-class">Mago da Matemática</div>
 
@@ -95,6 +98,9 @@
         <a class="nav-item" data-tab="analytics">
           <span class="nav-icon">📊</span> Estatísticas
         </a>
+        <a class="nav-item" data-tab="attributes">
+          <span class="nav-icon">✨</span> Atributos
+        </a>
       </nav>
 
       <!-- User info + logout (shown when logged in) -->
@@ -120,7 +126,10 @@
           <div class="char-avatar-container" style="width: 80px; height: 80px; margin: 0 auto 10px; padding: 4px;">
             <div id="hero-tab-avatar" class="char-avatar" style="font-size: 2.2rem;">🧙‍♂️</div>
           </div>
-          <h2 id="hero-tab-name" style="font-size: 1.4rem; font-weight: 800; color: #fff; margin: 0;">Herói do Foco</h2>
+          <div class="char-name-row" style="justify-content: center; gap: 8px; margin-bottom: 2px;">
+            <h2 id="hero-tab-name" style="font-size: 1.4rem; font-weight: 800; color: #fff; margin: 0;">Herói do Foco</h2>
+            <button id="btn-edit-name-mobile" class="btn-edit-name" title="Mudar nome do herói">✏️</button>
+          </div>
           <div id="hero-tab-title" style="font-size: 0.9rem; color: var(--accent-gold); margin-top: 4px;">Recruta do
             Saber</div>
           <div id="hero-tab-class" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">Mago da
@@ -434,6 +443,61 @@
         </div>
       </section>
 
+      <!-- TAB 6: ATTRIBUTES -->
+      <section id="tab-attributes" class="view-tab">
+        <div class="view-header">
+          <h1 class="view-title"><span>✨</span> Distribuição de Atributos</h1>
+        </div>
+        
+        <div id="attributes-alert-container" class="attributes-alert-container">
+          <div class="attributes-alert-content">
+            <span class="attributes-alert-icon">⭐</span>
+            <div class="attributes-alert-text">
+              <strong>Você tem <span id="available-stat-points">0</span> pontos disponíveis!</strong>
+              <p>Suba de nível para ganhar mais pontos e fortalecer seu herói.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="attributes-list">
+          <!-- Focus -->
+          <div class="attribute-row glass-panel">
+            <div class="attribute-info">
+              <div class="attribute-icon" style="color: var(--accent-primary);">🧠</div>
+              <div class="attribute-details">
+                <div class="attribute-name">Foco <span id="attr-val-foc" class="attribute-value">10</span></div>
+                <div class="attribute-desc">Aumenta o dano causado por segundo (DPS) contra os monstros.</div>
+              </div>
+            </div>
+            <button class="glass-btn primary btn-add-stat" data-stat="foc" disabled>+</button>
+          </div>
+
+          <!-- Consistency -->
+          <div class="attribute-row glass-panel">
+            <div class="attribute-info">
+              <div class="attribute-icon" style="color: var(--accent-hp);">🛡️</div>
+              <div class="attribute-details">
+                <div class="attribute-name">Constância <span id="attr-val-con" class="attribute-value">10</span></div>
+                <div class="attribute-desc">Reduz as penalidades ao falhar ou desistir de um foco. Aumenta a proteção do contra-ataque.</div>
+              </div>
+            </div>
+            <button class="glass-btn danger btn-add-stat" data-stat="con" disabled>+</button>
+          </div>
+
+          <!-- Intellect -->
+          <div class="attribute-row glass-panel">
+            <div class="attribute-info">
+              <div class="attribute-icon" style="color: var(--accent-xp);">💡</div>
+              <div class="attribute-details">
+                <div class="attribute-name">Intelecto <span id="attr-val-int" class="attribute-value">10</span></div>
+                <div class="attribute-desc">Aumenta um bônus percentual sobre toda experiência (XP) recebida.</div>
+              </div>
+            </div>
+            <button class="glass-btn success btn-add-stat" data-stat="int" disabled>+</button>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -485,6 +549,7 @@
         </div>
       </div>
       <div class="modal-footer">
+        <button id="intro-modal-cancel" class="glass-btn danger intro-cancel-btn" style="display:none;">&#10005; Cancelar</button>
         <button id="btn-save-character" class="glass-btn primary">Criar Personagem ⚔️</button>
       </div>
     </div>
@@ -558,6 +623,20 @@
       <h3 id="splash-title" class="splash-title">Recompensa Desbloqueada!</h3>
       <div id="splash-reward-text" class="splash-reward-text">Você pode assistir 1 episódio de série.</div>
       <button id="btn-close-splash" class="glass-btn primary">Continuar Jornada ⚔️</button>
+    </div>
+
+    <!-- 5. ANNOUNCEMENT / CHANGELOG MODAL -->
+    <div id="announcement-modal" class="modal-content glass-panel" style="display: none; max-width: 500px;">
+      <div class="modal-header" style="flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px;">
+        <span id="announcement-badge" class="announcement-badge">Update</span>
+        <h3 id="announcement-title" class="modal-title" style="font-size: 1.4rem;">Novidades no Front!</h3>
+      </div>
+      <div class="modal-body" style="max-height: 280px; overflow-y: auto; padding-right: 8px; margin-top: 4px;">
+        <p id="announcement-message" style="font-size: 0.95rem; line-height: 1.6; color: var(--text-sub); white-space: pre-wrap; margin: 0;"></p>
+      </div>
+      <div class="modal-footer" style="justify-content: flex-end; margin-top: 24px;">
+        <button id="btn-close-announcement" class="glass-btn primary" style="width: 100%; max-width: 160px;">Bora Jogar! ⚔️</button>
+      </div>
     </div>
 
     <!-- Modal overlay keeps running splash/intro only. Profile modal has been removed in favor of native mobile tab. -->

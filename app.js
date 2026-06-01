@@ -274,6 +274,41 @@ const AudioSynth = {
     gain.connect(this.ctx.destination);
     osc.start();
     osc.stop(now + 0.15);
+  },
+
+  /**
+   * playTimerAlert() — Alarme eletrônico de fim de ciclo Pomodoro.
+   * Toca 3 beeps crescentes usando Web Audio API pura (sem arquivo .mp3).
+   * Fallback garantido: nunca falha, mesmo sem arquivos de áudio externos.
+   */
+  playTimerAlert() {
+    this.init();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+
+    const now = this.ctx.currentTime;
+    // 3 beeps com frequências crescentes: sinal claro de "acabou!"
+    const beeps = [
+      { freq: 880, start: 0.0 },
+      { freq: 1046, start: 0.22 },
+      { freq: 1318, start: 0.44 }
+    ];
+
+    beeps.forEach(({ freq, start }) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + start);
+
+      gain.gain.setValueAtTime(0, now + start);
+      gain.gain.linearRampToValueAtTime(0.22, now + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + 0.18);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + 0.2);
+    });
   }
 };
 
@@ -348,6 +383,7 @@ const App = {
       foc: 10,
       con: 10,
       int: 10,
+      statPoints: 0,
       activeTitle: 'Recruta do Saber',
       activeTheme: 'default',
       activeSkin: 'skin-default',
@@ -394,7 +430,9 @@ const App = {
     mode: 'idle', // 'idle', 'focus', 'short-break', 'long-break'
     pauseIntervalId: null,
     pauseSecondsLeft: 0,
-    isCustom: false
+    isCustom: false,
+    // ✅ Contador de ciclos de foco concluídos (regra: a cada 4 → Pausa Longa)
+    pomodorosCompleted: 0
   },
 
   // Contador de segundos contínuos sob foco ativo
@@ -522,9 +560,60 @@ const App = {
     this.renderUserInfo();
 
     if (!this.state.character.name) {
-      this.openModal('intro-modal', false);
+      this.openNameModal(true);
     } else {
       this.spawnMonster();
+    }
+
+    // Verifica avisos globais no Supabase
+    this.checkAnnouncements();
+  },
+
+  async checkAnnouncements() {
+    if (typeof supabaseClient === 'undefined') return;
+
+    try {
+      const { data, error } = await supabaseClient
+        .from('dopastudy_announcements')
+        .select('*')
+        .order('id', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('Erro ao carregar avisos globais:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const latest = data[0];
+        const lastSeenId = localStorage.getItem('dopastudy_last_seen_announcement_id');
+
+        if (!lastSeenId || latest.id > parseInt(lastSeenId, 10)) {
+          const badgeEl = document.getElementById('announcement-badge');
+          const titleEl = document.getElementById('announcement-title');
+          const messageEl = document.getElementById('announcement-message');
+
+          if (titleEl) titleEl.textContent = latest.title;
+          if (messageEl) messageEl.textContent = latest.message;
+
+          if (badgeEl) {
+            badgeEl.textContent = latest.type.toUpperCase();
+            badgeEl.className = 'announcement-badge';
+            if (latest.type) {
+              badgeEl.classList.add(`type-${latest.type.toLowerCase()}`);
+            }
+          }
+
+          const closeBtn = document.getElementById('btn-close-announcement');
+          if (closeBtn) {
+            closeBtn.dataset.announcementId = latest.id;
+          }
+
+          this.openModal('announcement-modal', true);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao processar verificação de avisos:', e);
     }
   },
 
@@ -585,13 +674,13 @@ const App = {
     // Sincroniza os inputs HTML com os valores salvos
     const savedFocus = this.state.customTimerDurations.focus || 25;
     const savedShort = this.state.customTimerDurations.shortBreak || 5;
-    const savedLong  = this.state.customTimerDurations.longBreak || 15;
+    const savedLong = this.state.customTimerDurations.longBreak || 15;
     const elFocus = document.getElementById('custom-minutes');
     const elShort = document.getElementById('custom-short-break');
-    const elLong  = document.getElementById('custom-long-break');
+    const elLong = document.getElementById('custom-long-break');
     if (elFocus) elFocus.value = savedFocus;
     if (elShort) elShort.value = savedShort;
-    if (elLong)  elLong.value  = savedLong;
+    if (elLong) elLong.value = savedLong;
 
     // Garante que as recompensas do sistema tenham sempre o custo correto exato
     const systemRewardCosts = { r1: 40, r2: 60, r3: 100, r4: 150 };
@@ -1338,7 +1427,7 @@ const App = {
           const stats = this.getEffectiveStats();
           const weaponPassiva = (this.state.character.equipment && this.state.character.equipment.weapon === 'eq-catana') ? 1.25 : 1.0;
           const doubleDamageMult = (this.state.activeBuffs && this.state.activeBuffs.doubleDamage > 0) ? 2 : 1;
-          const dps = ((stats.foc * weaponPassiva) * doubleDamageMult) * 0.7;
+          const dps = ((stats.foc * weaponPassiva) * doubleDamageMult) * 0.2;
 
           // Dano direto no HP do monstro ativo
           this.activeMonster.hp = Math.max(0, this.activeMonster.hp - dps);
@@ -1429,10 +1518,20 @@ const App = {
     this.timer.intervalId = null;
     this.continuousFocusTicks = 0;
 
+    // ─────────────────────────────────────────────────────────────
+    // BLOCO A: Fim de ciclo de FOCO
+    // ─────────────────────────────────────────────────────────────
     if (this.timer.mode === 'focus') {
       const focusMinutes = Math.round(this.timer.duration / 60);
 
-      // Incrementa Combo de Foco
+      // ① Incrementa o contador de pomodoros (regra: a cada 4 → Pausa Longa)
+      this.timer.pomodorosCompleted = (this.timer.pomodorosCompleted || 0) + 1;
+      const pomCount = this.timer.pomodorosCompleted;
+
+      // ② Toca o alarme de fim de ciclo
+      AudioSynth.playTimerAlert();
+
+      // ③ Incrementa Combo de Foco
       this.state.focusCombo += 1;
       this.updateComboEffects();
       this.addLog(`🔥 Combo de Foco aumentado! Multiplicador atual: +${this.state.focusCombo * 10}% de GP/XP.`, "victory");
@@ -1441,13 +1540,13 @@ const App = {
       this.addFocusAnalytics(focusMinutes);
 
       // Se ainda sobrou HP no monstro ativo, liquida-o como bônus de conclusão
-      if (this.activeMonster.hp > 0) {
+      if (this.activeMonster && this.activeMonster.hp > 0) {
         this.activeMonster.hp = 0;
         this.renderMonster();
         this.defeatMonsterMidTimer();
       }
 
-      this.addLog(`🎉 Ciclo de Foco de ${focusMinutes}m completado! Foco estável.`, "victory");
+      this.addLog(`🎉 Ciclo de Foco de ${focusMinutes}m completado! (Pomodoro #${pomCount})`, "victory");
       this.incrementStreak();
 
       // Mostra resumo da Raid
@@ -1484,22 +1583,97 @@ const App = {
 
       // Avaliação centralizada de TODAS as missões (anti-cheat)
       this.checkAndTriggerQuests();
-
       this.saveState();
-      this.resetTimerState();
-      this.setTimerMode('short-break');
+
+      // ④ Decide qual pausa usar: a cada 4 pomodoros → Pausa Longa
+      const useLongBreak = (pomCount % 4 === 0);
+      const nextMode = useLongBreak ? 'long-break' : 'short-break';
+      const breakLabel = useLongBreak ? 'Pausa Longa 🌙' : 'Pausa Curta ☕';
+      this.addLog(`⏸ Iniciando ${breakLabel} automática. Descanse um pouco!`, "info");
+
+      // ⑤ Prepara e auto-inicia a pausa sem intervenção do usuário
+      this._autoStartNextPhase(nextMode);
+
+      // ─────────────────────────────────────────────────────────────
+      // BLOCO B: Fim de PAUSA (curta ou longa)
+      // ─────────────────────────────────────────────────────────────
     } else {
-      AudioSynth.playQuestComplete();
-      this.addLog(`💪 Intervalo concluído! Retornando ao combate de foco.`, "info");
+      // ① Toca o alarme de fim de pausa
+      AudioSynth.playTimerAlert();
+      this.addLog(`⚔️ Pausa encerrada! Voltando ao combate de foco automaticamente.`, "info");
 
       this.triggerDailyProgress('break_completed', 1);
 
       // Avaliação centralizada de TODAS as missões (anti-cheat)
       this.checkAndTriggerQuests();
 
-      this.resetTimerState();
-      this.setTimerMode('focus');
+      // ② Auto-inicia o próximo ciclo de Foco
+      this.addLog(`🎯 Iniciando novo ciclo de Foco. Mantenha o ritmo!`, "victory");
+      this._autoStartNextPhase('focus');
     }
+  },
+
+  /**
+   * _autoStartNextPhase(mode)
+   * Transita para o modo indicado e inicia o timer automaticamente,
+   * sem necessidade de clique do usuário.
+   * @param {'focus'|'short-break'|'long-break'} mode
+   */
+  _autoStartNextPhase(mode) {
+    // Limpa o estado atual do timer (sem resetar o pomodorosCompleted)
+    clearInterval(this.timer.intervalId);
+    this.timer.intervalId = null;
+    this.cancelPauseCounter();
+    this.continuousFocusTicks = 0;
+
+    // Preserva o contador de pomodoros ao mudar de fase
+    const savedPomodoros = this.timer.pomodorosCompleted || 0;
+
+    // Carrega a duração correta para o novo modo
+    let minutes;
+    if (mode === 'focus') {
+      minutes = this.state.customTimerDurations.focus || 25;
+    } else if (mode === 'short-break') {
+      minutes = this.state.customTimerDurations.shortBreak || 5;
+    } else {
+      minutes = this.state.customTimerDurations.longBreak || 15;
+    }
+
+    // Atualiza o estado do timer para o novo modo
+    this.timer.mode = mode;
+    this.timer.duration = minutes * 60;
+    this.timer.timeLeft = this.timer.duration;
+    this.timer.isCustom = true;
+    this.timer.pomodorosCompleted = savedPomodoros; // preserva o contador
+
+    // Atualiza a UI de modo (botões e label)
+    this.setTimerMode(mode);
+
+    // Atualiza os botões de controle para estado "rodando"
+    const startBtn = document.getElementById('timer-start');
+    const pauseBtn = document.getElementById('timer-pause');
+    const resetBtn = document.getElementById('timer-reset');
+    if (startBtn && pauseBtn && resetBtn) {
+      startBtn.style.display = 'none';
+      pauseBtn.style.display = 'inline-flex';
+      pauseBtn.disabled = false;
+      resetBtn.disabled = false;
+    }
+
+    // Se for foco, reinicia o monstro da raid
+    if (mode === 'focus') {
+      this.sessionMonsterDefeats = 0;
+      this.raidTotalXp = 0;
+      this.raidTotalGold = 0;
+      this.raidMonstersDefeated = 0;
+      this.spawnMonster(1, 1);
+      const sprite = document.getElementById('monster-sprite');
+      if (sprite) sprite.className = 'monster-sprite idle';
+    }
+
+    // Inicia o interval do timer automaticamente
+    if (this.timer.intervalId) clearInterval(this.timer.intervalId);
+    this.timer.intervalId = setInterval(() => { this.tick(); }, 1000);
   },
 
   updateComboEffects() {
@@ -1545,9 +1719,7 @@ const App = {
       this.state.character.xp -= xpNeeded;
       this.state.character.level++;
 
-      this.state.character.foc += 1;
-      this.state.character.con += 1;
-      this.state.character.int += 1;
+      this.state.character.statPoints = (this.state.character.statPoints || 0) + 3;
 
       leveledUp = true;
       xpNeeded = this.getXpRequired(this.state.character.level);
@@ -2176,6 +2348,9 @@ const App = {
     // Sincroniza a aba mobile do Herói
     this.renderMobileHeroTab();
 
+    // Sincroniza a aba de Atributos
+    this.renderAttributesTab();
+
     // Skin do Card
     const cardEl = document.getElementById('char-card');
     if (cardEl) {
@@ -2257,6 +2432,61 @@ const App = {
     const heroEmail = document.getElementById('hero-tab-email');
     if (heroEmail) {
       heroEmail.textContent = SupabaseAuth.currentUser ? SupabaseAuth.currentUser.email : 'Sessão Offline';
+    }
+  },
+
+  // ==========================================================================
+  // ATRIBUTOS E PONTOS
+  // ==========================================================================
+  renderAttributesTab() {
+    const char = this.state.character;
+    const statPoints = char.statPoints || 0;
+
+    // Atualiza contadores
+    const availPointsEl = document.getElementById('available-stat-points');
+    if (availPointsEl) availPointsEl.textContent = statPoints;
+
+    const valFocEl = document.getElementById('attr-val-foc');
+    if (valFocEl) valFocEl.textContent = char.foc;
+
+    const valConEl = document.getElementById('attr-val-con');
+    if (valConEl) valConEl.textContent = char.con;
+
+    const valIntEl = document.getElementById('attr-val-int');
+    if (valIntEl) valIntEl.textContent = char.int;
+
+    // Controle do banner de alerta
+    const alertContainer = document.getElementById('attributes-alert-container');
+    if (alertContainer) {
+      if (statPoints > 0) {
+        alertContainer.style.display = 'block';
+      } else {
+        alertContainer.style.display = 'none';
+      }
+    }
+
+    // Controle dos botões
+    document.querySelectorAll('.btn-add-stat').forEach(btn => {
+      btn.disabled = statPoints <= 0;
+    });
+  },
+
+  allocateStatPoint(stat) {
+    const char = this.state.character;
+    const statPoints = char.statPoints || 0;
+
+    if (statPoints > 0) {
+      char.statPoints -= 1;
+      if (stat === 'foc') char.foc += 1;
+      if (stat === 'con') char.con += 1;
+      if (stat === 'int') char.int += 1;
+
+      AudioSynth.playClick();
+      this.addLog(`✨ Atributo ${stat.toUpperCase()} aprimorado! Restam ${char.statPoints} pontos.`, 'victory');
+      
+      this.renderAttributesTab();
+      this.renderCharacterCard();
+      this.saveState();
     }
   },
 
@@ -2728,7 +2958,17 @@ const App = {
           this.renderEpicShop();
         } else if (tabName === 'hero') {
           this.renderMobileHeroTab();
+        } else if (tabName === 'attributes') {
+          this.renderAttributesTab();
         }
+      });
+    });
+
+    // Eventos dos botões de atributos
+    document.querySelectorAll('.btn-add-stat').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const stat = e.currentTarget.dataset.stat;
+        this.allocateStatPoint(stat);
       });
     });
 
@@ -2738,7 +2978,7 @@ const App = {
     document.querySelectorAll('.char-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         if (e.currentTarget.classList.contains('active')) return;
-        
+
         document.querySelectorAll('.char-tab-btn').forEach(b => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
 
@@ -2791,26 +3031,33 @@ const App = {
         if (!this.timer.intervalId) {
           // Garante transição visual para o modo de foco ao interagir com o campo
           this.timer.mode = 'focus';
-          
+
+          const val = parseInt(customMinutesInput.value) || 25;
+
+          // Atualiza o estado persistido (igual ao que short-break e long-break fazem)
+          this.state.customTimerDurations.focus = val;
+
           const modeBtnFocus = document.querySelector('[data-mode="focus"]');
           const modeBtnShort = document.querySelector('[data-mode="short-break"]');
           const modeBtnLong = document.querySelector('[data-mode="long-break"]');
           if (modeBtnFocus && modeBtnShort && modeBtnLong) {
             [modeBtnFocus, modeBtnShort, modeBtnLong].forEach(btn => btn.classList.remove('primary'));
             modeBtnFocus.classList.add('primary');
+            // ✅ BUG 1 FIX: atualiza o label do botão em tempo real (igual a Pausa e Intervalo)
+            modeBtnFocus.textContent = `Foco (${val}m)`;
           }
-          
+
           document.getElementById('timer-mode-label').textContent = "Foco ativo";
           const progressCircle = document.getElementById('timer-progress');
           if (progressCircle) {
             progressCircle.classList.remove('break-mode');
           }
 
-          const val = parseInt(customMinutesInput.value) || 25;
           this.timer.duration = val * 60;
           this.timer.timeLeft = this.timer.duration;
           this.timer.isCustom = true;
           this.renderTimerDisplay();
+          this.saveState();
         }
       };
 
@@ -2993,8 +3240,32 @@ const App = {
       });
     });
 
+    // Botão de edição de nome (Desktop & Mobile)
+    document.querySelectorAll('#btn-edit-name, #btn-edit-name-mobile').forEach(btn => {
+      btn.addEventListener('click', () => this.openNameModal(false));
+    });
+
     document.getElementById('btn-save-character').addEventListener('click', () => {
-      const name = document.getElementById('intro-player-name').value.trim() || 'Estudante Lendário';
+      const rawName = document.getElementById('intro-player-name').value.trim();
+      const name = rawName.replace(/\s+/g, ' ');
+
+      if (name.length < 3 || name.length > 15) {
+        alert('O nome deve ter entre 3 e 15 caracteres.');
+        return;
+      }
+
+      if (this._isRenaming) {
+        // ── FLUXO VOLUNTÁRIO: apenas atualiza o nome ──
+        this.state.character.name = name;
+        this.closeModal('intro-modal');
+        this.saveState();
+        this.renderCharacterCard();
+        AudioSynth.playClick();
+        this.addLog(`✏️ Nome alterado para "${name}" com sucesso!`, 'victory');
+        return;
+      }
+
+      // ── FLUXO OBRIGATÓRIO: criação completa do personagem ──
       const activeClassCard = document.querySelector('.class-card.active');
       const classId = activeClassCard ? activeClassCard.dataset.class : 'math';
 
@@ -3018,6 +3289,9 @@ const App = {
         this.state.character.con = 10;
         this.state.character.int = 11;
       }
+
+      // Reabilita navegação após criação
+      document.querySelectorAll('.nav-item').forEach(el => el.style.pointerEvents = '');
 
       this.closeModal('intro-modal');
       this.saveState();
@@ -3102,6 +3376,28 @@ const App = {
     document.getElementById('btn-close-splash').addEventListener('click', () => {
       this.closeModal('splash-modal');
     });
+
+    const introCancel = document.getElementById('intro-modal-cancel');
+    if (introCancel) {
+      introCancel.addEventListener('click', () => {
+        if (this._isRenaming) {
+          this.closeModal('intro-modal');
+          const nameInput = document.getElementById('intro-player-name');
+          if (nameInput) nameInput.value = '';
+        }
+      });
+    }
+
+    const btnCloseAnn = document.getElementById('btn-close-announcement');
+    if (btnCloseAnn) {
+      btnCloseAnn.addEventListener('click', () => {
+        const currentId = btnCloseAnn.dataset.announcementId;
+        if (currentId) {
+          localStorage.setItem('dopastudy_last_seen_announcement_id', currentId);
+        }
+        this.closeModal('announcement-modal');
+      });
+    }
   },
 
   // ==========================================================================
@@ -3119,6 +3415,42 @@ const App = {
     target.style.display = 'block';
 
     overlay.dataset.closable = String(closable);
+  },
+
+  /**
+   * Abre o modal de nome/criação de personagem.
+   * @param {boolean} isObligatory - true = novo jogador (sem cancelar); false = renomear voluntário
+   */
+  openNameModal(isObligatory = false) {
+    this._isRenaming = !isObligatory;
+
+    const cancelBtn  = document.getElementById('intro-modal-cancel');
+    const classGrid  = document.querySelector('#intro-modal .class-grid');
+    const modalTitle = document.querySelector('#intro-modal .modal-title');
+    const saveBtn    = document.getElementById('btn-save-character');
+    const nameInput  = document.getElementById('intro-player-name');
+
+    // Pré-preenche com o nome atual
+    if (nameInput && this.state.character.name) {
+      nameInput.value = this.state.character.name;
+    }
+
+    if (isObligatory) {
+      if (cancelBtn)  cancelBtn.style.display  = 'none';
+      if (classGrid)  classGrid.style.display  = '';
+      if (modalTitle) modalTitle.textContent    = '✨ Escolha Sua Classe de Estudante';
+      if (saveBtn)    saveBtn.textContent        = 'Criar Personagem ⚔️';
+      // Bloqueia navegação enquanto obrigatório
+      document.querySelectorAll('.nav-item').forEach(el => el.style.pointerEvents = 'none');
+    } else {
+      if (cancelBtn)  cancelBtn.style.display  = 'inline-flex';
+      if (classGrid)  classGrid.style.display  = 'none';
+      if (modalTitle) modalTitle.textContent    = '✏️ Mudar Nome do Herói';
+      if (saveBtn)    saveBtn.textContent        = 'Salvar Nome ✔️';
+      document.querySelectorAll('.nav-item').forEach(el => el.style.pointerEvents = '');
+    }
+
+    this.openModal('intro-modal', !isObligatory);
   },
 
   closeModal(modalId) {
@@ -3282,14 +3614,14 @@ const App = {
           } else {
             user = await SupabaseAuth.signUp(email, password);
           }
-          
+
           // Cláusula de guarda rígida: se não retornar um objeto user válido (curto-circuito)
           if (!user || !user.id) {
             this._setAuthError('❌ Falha na autenticação. Verifique suas credenciais.');
             this._setAuthLoading(false);
             return; // Bloqueia a execução imediatamente
           }
-          
+
           // O bootGame é acionado pelo onAuthChange listener no init()
           // mas chamamos diretamente também para garantir imediatismo APENAS se não houver erros
           await this.bootGame();

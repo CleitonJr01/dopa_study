@@ -350,6 +350,8 @@ main.main-content::-webkit-scrollbar-thumb:hover,
   padding: 20px;
   text-align: center;
   overflow: hidden;
+  flex-shrink: 0;
+  /* Impede que o card seja esmagado pela sidebar flex no desktop */
 }
 
 /* ==========================================================================
@@ -473,6 +475,37 @@ main.main-content::-webkit-scrollbar-thumb:hover,
   font-size: 1.15rem;
   font-weight: 700;
   margin-bottom: 2px;
+}
+
+/* Linha do nome + botão de edição */
+.char-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+/* Botão de lápis para editar nome — estilo cyberpunk minimalista */
+.btn-edit-name {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.35;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: opacity 0.2s ease, text-shadow 0.2s ease, transform 0.2s ease;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-edit-name:hover {
+  opacity: 1;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.9), 0 0 20px rgba(0, 240, 255, 0.4);
+  transform: scale(1.2);
 }
 
 .char-title {
@@ -632,6 +665,8 @@ main.main-content::-webkit-scrollbar-thumb:hover,
   color: var(--accent-gold);
   border-radius: 12px;
   text-shadow: var(--neon-glow-gold);
+  flex-shrink: 0;
+  /* Impede encolhimento */
 }
 
 .gold-icon {
@@ -643,6 +678,8 @@ nav.nav-menu {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
+  /* Impede encolhimento */
 }
 
 .nav-item {
@@ -903,11 +940,13 @@ nav.nav-menu {
     flex-direction: column;
     gap: 8px;
   }
+
   .custom-time-divider {
     width: 100%;
     height: 1px;
     margin: 0;
   }
+
   .custom-time-group {
     flex-direction: row;
     justify-content: space-between;
@@ -1686,6 +1725,160 @@ label:has(.quest-checkbox:disabled) {
 }
 
 /* ==========================================================================
+   ATTRIBUTES TAB STYLES
+   ========================================================================== */
+.attributes-alert-container {
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 0 auto 30px;
+  max-width: 900px;
+  width: 100%;
+  animation: pulseNeonCyan 2s infinite alternate;
+  box-sizing: border-box;
+}
+
+@keyframes pulseNeonCyan {
+  0% {
+    box-shadow: 0 0 5px rgba(0, 240, 255, 0.1);
+    border-color: rgba(0, 240, 255, 0.2);
+  }
+
+  100% {
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+    border-color: rgba(0, 240, 255, 0.6);
+  }
+}
+
+.attributes-alert-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.attributes-alert-icon {
+  font-size: 2.5rem;
+}
+
+.attributes-alert-text {
+  flex: 1;
+}
+
+.attributes-alert-text strong {
+  display: block;
+  font-size: 1.25rem;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.attributes-alert-text p {
+  font-size: 0.9rem;
+  color: var(--text-sub, var(--text-muted));
+}
+
+.attributes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.attribute-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 36px;
+  background: rgba(18, 15, 30, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  transition: all 0.3s ease;
+  width: 100%;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.attribute-info {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex: 1;
+  min-width: 320px;
+}
+
+.attribute-icon {
+  font-size: 2.5rem;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+}
+
+.attribute-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.attribute-name {
+  font-size: 1.3rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #ffffff;
+}
+
+.attribute-value {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 3px 12px;
+  border-radius: 12px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+}
+
+.attribute-desc {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  max-width: 580px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.btn-add-stat {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  font-size: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-add-stat:hover:not(:disabled) {
+  transform: scale(1.1);
+}
+
+.btn-add-stat:disabled {
+  opacity: 0.25;
+  filter: grayscale(100%);
+  cursor: not-allowed;
+  box-shadow: none !important;
+}
+
+/* ==========================================================================
    MODAL SYSTEM & CUSTOM SPLASH
    ========================================================================== */
 .modal-overlay {
@@ -1693,14 +1886,22 @@ label:has(.quest-checkbox:disabled) {
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
+  /* ✅ BUG 2 FIX: usa dvh (Dynamic Viewport Height) para descontar a barra do Safari/iOS */
+  min-height: 100dvh;
+  /* Fallback para browsers sem suporte a dvh */
+  min-height: 100vh;
+  min-height: 100dvh;
   background: rgba(6, 4, 14, 0.85);
   backdrop-filter: blur(8px);
   z-index: 100;
   display: none;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  /* overflow-y garante scroll caso o conteúdo seja maior que a tela */
+  overflow-y: auto;
   padding: 20px;
+  /* Padding extra para respeitar a área segura inferior do iPhone (home indicator) */
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 20px));
   animation: fadeIn 0.25s ease forwards;
 }
 
@@ -1712,7 +1913,15 @@ label:has(.quest-checkbox:disabled) {
   width: 100%;
   max-width: 480px;
   padding: 28px;
+  /* ✅ BUG 2 FIX: padding inferior extra para o botão de confirmação nunca colidir com a barra home do iPhone */
+  padding-bottom: max(28px, calc(28px + env(safe-area-inset-bottom, 0px)));
   position: relative;
+  /* Garante scroll interno se o modal for maior que a viewport reduzida */
+  overflow-y: auto;
+  max-height: calc(100dvh - 40px);
+  /* Fallback */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
@@ -1764,9 +1973,21 @@ label:has(.quest-checkbox:disabled) {
 
 .modal-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   margin-top: 24px;
+}
+
+/* Botão cancelar do modal de renomear */
+.intro-cancel-btn {
+  opacity: 0.8;
+  font-size: 0.85rem;
+  padding: 10px 18px;
+}
+
+.intro-cancel-btn:hover {
+  opacity: 1;
 }
 
 /* Success/Reward Splash Modal */
@@ -1813,6 +2034,53 @@ label:has(.quest-checkbox:disabled) {
   border-radius: 8px;
   border: 1px solid var(--card-border);
   margin-bottom: 24px;
+}
+
+/* Announcement / Changelog Modal & Badge Styling */
+.announcement-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+/* Badge variants based on type */
+.announcement-badge.type-update {
+  background: rgba(var(--accent-primary-rgb), 0.15);
+  color: var(--accent-primary);
+  border-color: rgba(var(--accent-primary-rgb), 0.4);
+  box-shadow: 0 0 10px rgba(var(--accent-primary-rgb), 0.2);
+}
+
+.announcement-badge.type-alerta {
+  background: rgba(255, 69, 58, 0.15);
+  color: #ff453a;
+  border-color: rgba(255, 69, 58, 0.4);
+  box-shadow: 0 0 10px rgba(255, 69, 58, 0.2);
+  animation: pulseGlowRed 1.5s infinite alternate;
+}
+
+.announcement-badge.type-evento {
+  background: rgba(255, 214, 10, 0.15);
+  color: var(--accent-gold);
+  border-color: rgba(255, 214, 10, 0.4);
+  box-shadow: 0 0 10px rgba(255, 214, 10, 0.2);
+}
+
+@keyframes pulseGlowRed {
+  from {
+    box-shadow: 0 0 6px rgba(255, 69, 58, 0.2);
+    border-color: rgba(255, 69, 58, 0.4);
+  }
+  to {
+    box-shadow: 0 0 15px rgba(255, 69, 58, 0.6);
+    border-color: rgba(255, 69, 58, 0.8);
+  }
 }
 
 /* Avatar Class Select Screen (Intro) */
@@ -2101,6 +2369,7 @@ label:has(.quest-checkbox:disabled) {
 }
 
 @media (max-width: 768px) {
+
   /* Lock the main container body to avoid viewport bounce, simulating a native app */
   .app-container {
     grid-template-columns: 1fr;
@@ -2139,7 +2408,8 @@ label:has(.quest-checkbox:disabled) {
   /* Make Main Content a scrollable viewport area between the Top Bar and Bottom Nav */
   main.main-content {
     flex: 1;
-    height: calc(100vh - 120px); /* 60px Top Header + 60px Bottom Nav */
+    height: calc(100vh - 120px);
+    /* 60px Top Header + 60px Bottom Nav */
     overflow-y: auto;
     padding: 16px 16px 90px;
     margin: 0;
@@ -2224,7 +2494,7 @@ label:has(.quest-checkbox:disabled) {
     font-family: var(--font-mono);
     color: #fff;
     background: var(--accent-xp);
-    border: 1px solid rgba(255,255,255,0.15);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 1px 3px;
     border-radius: 4px;
     font-weight: 700;
@@ -2233,7 +2503,8 @@ label:has(.quest-checkbox:disabled) {
   }
 
   .char-card #char-xp-ratio {
-    display: none; /* saved space */
+    display: none;
+    /* saved space */
   }
 
   .char-card .xp-bar-bg {
@@ -2278,7 +2549,8 @@ label:has(.quest-checkbox:disabled) {
   }
 
   .user-email-display {
-    display: none; /* saved space */
+    display: none;
+    /* saved space */
   }
 
   .btn-logout-small {
@@ -2287,7 +2559,13 @@ label:has(.quest-checkbox:disabled) {
     margin: 0;
   }
 
-  /* Convert sidebar menu to absolute premium bottom fixed navigation menu */
+  .btn-edit-name {
+    padding: 8px 12px;
+    font-size: 1.1rem;
+    opacity: 0.6;
+  }
+
+  /* Convert sidebar menu to scrollable bottom navigation bar */
   nav.nav-menu {
     position: fixed;
     bottom: 0;
@@ -2296,12 +2574,12 @@ label:has(.quest-checkbox:disabled) {
     height: 60px;
     display: flex;
     flex-direction: row;
-    justify-content: space-around;
+    flex-wrap: nowrap; /* Impede quebra de linha */
     align-items: center;
     background: rgba(12, 10, 26, 0.96);
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
-    padding: 0 8px;
+    padding: 0 4px;
     border: none;
     border-top: 1px solid var(--card-border);
     z-index: 1000;
@@ -2309,16 +2587,33 @@ label:has(.quest-checkbox:disabled) {
     border-radius: 0;
     margin: 0;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+    /* Scroll horizontal suave */
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    scrollbar-width: none;       /* Firefox */
+    -ms-overflow-style: none;    /* IE/Edge */
   }
+
+  /* Oculta scrollbar visualmente mas mantém funcionalidade de arrastar */
+  nav.nav-menu::-webkit-scrollbar {
+    display: none;
+  }
+
 
   .nav-item {
     flex-direction: column;
-    padding: 6px 10px;
+    padding: 6px 14px;
     font-size: 0.65rem;
     gap: 3px;
     border-radius: 8px;
-    flex: 1;
     text-align: center;
+    /* Impede que os itens encolham para caber na tela */
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    min-width: 64px;
+    white-space: nowrap;
   }
 
   .nav-item:hover {
@@ -2351,7 +2646,8 @@ label:has(.quest-checkbox:disabled) {
 
   .shop-sections-nav::-webkit-scrollbar,
   .quest-tabs-header::-webkit-scrollbar {
-    display: none; /* Hide scrollbars for slick look */
+    display: none;
+    /* Hide scrollbars for slick look */
   }
 
   /* Quest tabs horizontal scroll list to avoid stacking */
@@ -3054,49 +3350,63 @@ label:has(.quest-checkbox:disabled) {
     gap: 10px;
     padding: 12px;
   }
+
   .char-card {
     padding: 12px;
   }
+
   .char-avatar-container {
     width: 60px;
     height: 60px;
   }
+
   .char-avatar {
     font-size: 1.8rem;
   }
+
   .char-name {
     font-size: 0.95rem;
   }
-  .char-title, .char-class {
+
+  .char-title,
+  .char-class {
     font-size: 0.7rem;
     margin-top: 1px;
   }
+
   .active-gear-panel {
     margin-top: 6px;
   }
+
   .active-gear-slots {
     gap: 6px;
   }
+
   .gear-slot-visual {
     width: 32px;
     height: 32px;
     font-size: 1rem;
   }
+
   .xp-container {
     margin-top: 8px !important;
   }
+
   .char-card .stats-block {
     margin-top: 8px;
     padding: 6px 4px;
     gap: 4px;
   }
+
   .stat-row {
     font-size: 0.72rem;
   }
+
   .gold-counter {
     padding: 6px 12px;
     font-size: 0.8rem;
   }
+
   .user-info-bar {
     padding: 6px 8px;
     gap: 4px;
