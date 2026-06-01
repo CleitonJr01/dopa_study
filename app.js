@@ -566,6 +566,9 @@ const App = {
       // Verifica avisos globais no Supabase apenas para utilizadores antigos
       this.checkAnnouncements();
     }
+
+    // Inicializa o temporizador global de buffs de poções
+    this.startBuffsTimer();
   },
 
   async checkAnnouncements() {
@@ -620,6 +623,67 @@ const App = {
     } catch (e) {
       console.warn('Erro ao processar verificação de avisos:', e);
     }
+  },
+
+  startBuffsTimer() {
+    if (this._buffsIntervalId) {
+      clearInterval(this._buffsIntervalId);
+    }
+
+    this._buffsIntervalId = setInterval(() => {
+      try {
+        let changed = false;
+        const now = Date.now();
+
+        if (this.state.activeBuffs) {
+          // Double XP
+          if (this.state.activeBuffs.doubleXpExpire) {
+            const remaining = Math.max(0, Math.floor((this.state.activeBuffs.doubleXpExpire - now) / 1000));
+            if (this.state.activeBuffs.doubleXp !== remaining) {
+              this.state.activeBuffs.doubleXp = remaining;
+              changed = true;
+            }
+            if (remaining === 0) {
+              delete this.state.activeBuffs.doubleXpExpire;
+              changed = true;
+            }
+          } else if (this.state.activeBuffs.doubleXp > 0) {
+            // Reconstrói timestamp se não houver (ex: save antigo)
+            this.state.activeBuffs.doubleXpExpire = now + this.state.activeBuffs.doubleXp * 1000;
+          }
+
+          // Double Damage
+          if (this.state.activeBuffs.doubleDamageExpire) {
+            const remaining = Math.max(0, Math.floor((this.state.activeBuffs.doubleDamageExpire - now) / 1000));
+            if (this.state.activeBuffs.doubleDamage !== remaining) {
+              this.state.activeBuffs.doubleDamage = remaining;
+              changed = true;
+            }
+            if (remaining === 0) {
+              delete this.state.activeBuffs.doubleDamageExpire;
+              changed = true;
+            }
+          } else if (this.state.activeBuffs.doubleDamage > 0) {
+            // Reconstrói timestamp se não houver (ex: save antigo)
+            this.state.activeBuffs.doubleDamageExpire = now + this.state.activeBuffs.doubleDamage * 1000;
+          }
+        }
+
+        this.renderBuffsTimeline();
+
+        // Se o utilizador estiver na aba da loja de visuais, re-renderiza para atualizar os botões
+        const skinShopTab = document.getElementById('tab-skin-shop');
+        if (skinShopTab && skinShopTab.classList.contains('active')) {
+          this.renderEpicShop();
+        }
+
+        if (changed) {
+          this.saveState();
+        }
+      } catch (err) {
+        console.error("Erro no loop de temporizador das poções:", err);
+      }
+    }, 1000);
   },
 
   // ============================================================
@@ -1381,18 +1445,6 @@ const App = {
         this.renderTimerDisplay();
 
         if (this.timer.mode === 'focus') {
-          // Decrementa Buffs Temporários
-          if (this.state.activeBuffs) {
-            if (this.state.activeBuffs.doubleXp > 0) this.state.activeBuffs.doubleXp--;
-            if (this.state.activeBuffs.doubleDamage > 0) this.state.activeBuffs.doubleDamage--;
-            this.renderBuffsTimeline();
-
-            const skinShopTab = document.getElementById('tab-skin-shop');
-            if (skinShopTab && skinShopTab.classList.contains('active')) {
-              this.renderEpicShop();
-            }
-          }
-
           // Incrementa contador contínuo
           this.continuousFocusTicks++;
 
@@ -1974,42 +2026,61 @@ const App = {
   // LOJA ÉPICA & GACHA
   // ==========================================================================
   buyEpicItem(type, id, cost) {
-    const currentGold = Number(this.state.character.gold);
-    const itemCost = Number(cost);
-    if (currentGold >= itemCost) {
-      if (this.deductGold(itemCost)) {
-        AudioSynth.playQuestComplete();
+    try {
+      const currentGold = Number(this.state.character.gold);
+      const itemCost = Number(cost);
+      if (currentGold >= itemCost) {
+        if (this.deductGold(itemCost)) {
+          AudioSynth.playQuestComplete();
 
-        if (type === 'skin') {
-          this.state.unlockedSkins.push(id);
-          this.addLog(`👑 Skin Desbloqueada: "${this.shopSkins.find(s => s.id === id).name}"!`, "victory");
-        } else if (type === 'title') {
-          this.state.unlockedTitles.push(id);
-          this.addLog(`👑 Título Desbloqueado: "${this.shopTitles.find(t => t.id === id).name}"!`, "victory");
-        } else if (type === 'theme') {
-          this.state.unlockedThemes.push(id);
-          this.addLog(`👑 Tema Desbloqueado: "${this.shopThemes.find(th => th.id === id).name}"!`, "victory");
-        } else if (type === 'equipment') {
-          this.state.unlockedEquipment.push(id);
-          this.addLog(`🗡️ Equipamento Desbloqueado: "${this.shopEquipments.find(eq => eq.id === id).name}"!`, "victory");
+          if (type === 'skin') {
+            const skin = this.shopSkins.find(s => s.id === id);
+            const name = skin ? skin.name : 'Skin Desconhecida';
+            this.state.unlockedSkins.push(id);
+            this.addLog(`👑 Skin Desbloqueada: "${name}"!`, "victory");
+          } else if (type === 'title') {
+            const title = this.shopTitles.find(t => t.id === id);
+            const name = title ? title.name : 'Título Desconhecido';
+            this.state.unlockedTitles.push(id);
+            this.addLog(`👑 Título Desbloqueado: "${name}"!`, "victory");
+          } else if (type === 'theme') {
+            const theme = this.shopThemes.find(th => th.id === id);
+            const name = theme ? theme.name : 'Tema Desconhecido';
+            this.state.unlockedThemes.push(id);
+            this.addLog(`👑 Tema Desbloqueado: "${name}"!`, "victory");
+          } else if (type === 'equipment') {
+            const eq = this.shopEquipments.find(e => e.id === id);
+            const name = eq ? eq.name : 'Equipamento Desconhecido';
+            this.state.unlockedEquipment.push(id);
+            this.addLog(`🗡️ Equipamento Desbloqueado: "${name}"!`, "victory");
+          }
+
+          this.saveData();
+          this.checkCampaignQuests();
+          this.renderEpicShop();
+          this.renderCharacterCard();
         }
-
-        this.saveData();
-        this.checkCampaignQuests();
-        this.renderEpicShop();
-        this.renderCharacterCard();
+      } else {
+        AudioSynth.playWarning();
+        alert("Ouro insuficiente para comprar este item!");
       }
-    } else {
-      AudioSynth.playWarning();
-      alert("Ouro insuficiente para comprar este item!");
+    } catch (err) {
+      console.error("Erro no fluxo de compra na loja:", err);
     }
   },
 
   equipItem(itemId) {
-    const eq = this.shopEquipments.find(e => e.id === itemId);
-    if (eq) {
+    try {
+      const eq = this.shopEquipments.find(e => e.id === itemId);
+      if (!eq) {
+        console.error(`Equipamento com ID ${itemId} não encontrado no banco local.`);
+        return;
+      }
       const slot = eq.slot;
       if (slot === 'weapon' || slot === 'armor' || slot === 'accessory') {
+        if (!this.state.character.equipment) {
+          this.state.character.equipment = { weapon: null, armor: null, accessory: null };
+        }
         const currentEquipped = this.state.character.equipment[slot];
 
         if (currentEquipped === itemId) {
@@ -2032,33 +2103,39 @@ const App = {
         this.renderCharacterCard();
         this.renderEpicShop();
       }
+    } catch (err) {
+      console.error("Erro no fluxo de equipar item:", err);
     }
   },
 
   equipEpicItem(type, id) {
-    AudioSynth.playClick();
+    try {
+      AudioSynth.playClick();
 
-    if (type === 'skin') {
-      this.state.character.currentSkin = id;
-      this.state.character.activeSkin = id;
-      this.addLog(`👑 Skin de Perfil equipada.`, "info");
-    } else if (type === 'title') {
-      const titleObj = this.shopTitles.find(t => t.id === id);
-      this.state.character.activeTitle = titleObj ? titleObj.name : 'Recruta do Saber';
-      this.addLog(`👑 Novo título: "${this.state.character.activeTitle}"`, "info");
-    } else if (type === 'theme') {
-      const themeObj = this.shopThemes.find(th => th.id === id);
-      this.state.character.activeTheme = themeObj ? themeObj.themeClass : 'default';
-      this.applyTheme(this.state.character.activeTheme);
-      this.addLog(`👑 Tema alterado.`, "info");
-    } else if (type === 'equipment') {
-      this.equipItem(id);
-      return;
+      if (type === 'skin') {
+        this.state.character.currentSkin = id;
+        this.state.character.activeSkin = id;
+        this.addLog(`👑 Skin de Perfil equipada.`, "info");
+      } else if (type === 'title') {
+        const titleObj = this.shopTitles.find(t => t.id === id);
+        this.state.character.activeTitle = titleObj ? titleObj.name : 'Recruta do Saber';
+        this.addLog(`👑 Novo título: "${this.state.character.activeTitle}"`, "info");
+      } else if (type === 'theme') {
+        const themeObj = this.shopThemes.find(th => th.id === id);
+        this.state.character.activeTheme = themeObj ? themeObj.themeClass : 'default';
+        this.applyTheme(this.state.character.activeTheme);
+        this.addLog(`👑 Tema alterado.`, "info");
+      } else if (type === 'equipment') {
+        this.equipItem(id);
+        return;
+      }
+
+      this.saveData();
+      this.renderCharacterCard();
+      this.renderEpicShop();
+    } catch (err) {
+      console.error("Erro ao equipar item épico:", err);
     }
-
-    this.saveData();
-    this.renderCharacterCard();
-    this.renderEpicShop();
   },
 
   applyTheme(themeName) {
@@ -2066,64 +2143,89 @@ const App = {
   },
 
   buyPotion(id, cost) {
-    const pot = this.shopPotions.find(p => p.id === id);
-    if (!pot) return;
-
-    const currentGold = Number(this.state.character.gold);
-    const potionCost = Number(cost);
-
-    if (currentGold >= potionCost) {
-      if (this.deductGold(potionCost)) {
-        AudioSynth.playQuestComplete();
-
-        if (!this.state.activeBuffs) {
-          this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
-        }
-        this.state.activeBuffs[pot.type] = pot.duration;
-
-        this.saveData();
-        this.renderEpicShop();
-        this.renderBuffsTimeline();
-
-        this.addLog(`🧪 Consumiste ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
+    try {
+      const pot = this.shopPotions.find(p => p.id === id);
+      if (!pot) {
+        console.error(`Poção com ID ${id} não encontrada no banco local.`);
+        return;
       }
-    } else {
-      AudioSynth.playWarning();
-      alert("Ouro insuficiente para comprar esta poção!");
+
+      const currentGold = Number(this.state.character.gold);
+      const potionCost = Number(cost);
+
+      if (currentGold >= potionCost) {
+        if (this.deductGold(potionCost)) {
+          AudioSynth.playQuestComplete();
+
+          if (!this.state.activeBuffs) {
+            this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
+          }
+
+          const type = pot.type; 
+          const now = Date.now();
+          
+          // Se já tem um buff ativo do mesmo tipo, estende a expiração, senão cria a partir de agora
+          const currentExpire = this.state.activeBuffs[`${type}Expire`] || now;
+          this.state.activeBuffs[`${type}Expire`] = Math.max(now, currentExpire) + pot.duration * 1000;
+          
+          // Atualiza os segundos restantes
+          this.state.activeBuffs[type] = Math.max(0, Math.floor((this.state.activeBuffs[`${type}Expire`] - now) / 1000));
+
+          this.saveData();
+          this.renderEpicShop();
+          this.renderBuffsTimeline();
+          
+          // Garante que o timer está rodando
+          this.startBuffsTimer();
+
+          this.addLog(`🧪 Consumiu ${pot.name}! Efeito "${pot.desc}" ativo!`, "victory");
+        }
+      } else {
+        AudioSynth.playWarning();
+        alert("Ouro insuficiente para comprar esta poção!");
+      }
+    } catch (err) {
+      console.error("Erro no fluxo de comprar poção:", err);
     }
   },
 
   renderBuffsTimeline() {
-    const container = document.getElementById('buffs-timeline');
-    if (!container) return;
+    try {
+      const container = document.getElementById('buffs-timeline');
+      if (!container) return;
 
-    container.innerHTML = '';
+      container.innerHTML = '';
 
-    if (!this.state.activeBuffs) return;
+      if (!this.state.activeBuffs) return;
 
-    const doubleXp = this.state.activeBuffs.doubleXp || 0;
-    const doubleDamage = this.state.activeBuffs.doubleDamage || 0;
+      const doubleXp = this.state.activeBuffs.doubleXp || 0;
+      const doubleDamage = this.state.activeBuffs.doubleDamage || 0;
 
-    if (doubleXp > 0) {
-      const min = Math.floor(doubleXp / 60);
-      const sec = doubleXp % 60;
-      const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+      if (doubleXp > 0) {
+        const h = Math.floor(doubleXp / 3600);
+        const m = Math.floor((doubleXp % 3600) / 60);
+        const s = doubleXp % 60;
+        const formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
-      const badge = document.createElement('div');
-      badge.className = 'buff-badge xp-buff';
-      badge.innerHTML = `<span>🧪 XP Duplo</span> <span class="buff-timer">${formatted}</span>`;
-      container.appendChild(badge);
-    }
+        const badge = document.createElement('div');
+        badge.className = 'buff-badge xp-buff';
+        badge.innerHTML = `<span>🧪 XP Duplo</span> <span class="buff-timer">${formatted}</span>`;
+        container.appendChild(badge);
+      }
 
-    if (doubleDamage > 0) {
-      const min = Math.floor(doubleDamage / 60);
-      const sec = doubleDamage % 60;
-      const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+      if (doubleDamage > 0) {
+        const h = Math.floor(doubleDamage / 3600);
+        const m = Math.floor((doubleDamage % 3600) / 60);
+        const s = doubleDamage % 60;
+        const formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
-      const badge = document.createElement('div');
-      badge.className = 'buff-badge damage-buff';
-      badge.innerHTML = `<span>⚡ Dano Duplo</span> <span class="buff-timer">${formatted}</span>`;
-      container.appendChild(badge);
+        const badge = document.createElement('div');
+        badge.className = 'buff-badge damage-buff';
+        badge.innerHTML = `<span>⚡ Dano Duplo</span> <span class="buff-timer">${formatted}</span>`;
+        container.appendChild(badge);
+      }
+    } catch (err) {
+      console.error("Erro ao renderizar linha do tempo dos buffs:", err);
     }
   },
 
@@ -2356,9 +2458,19 @@ const App = {
     // Sincroniza a aba de Atributos
     this.renderAttributesTab();
 
-    // Skin do Card
-    const cardEl = document.getElementById('char-card');
-    if (cardEl) {
+    // Skin do Card — sincroniza Desktop e Mobile (Aba Herói)
+    const selectedSkin = char.currentSkin || char.activeSkin || 'skin-default';
+    const skinObj = this.shopSkins.find(s => s.id === selectedSkin);
+    const skinClass = skinObj ? (skinObj.class || skinObj.id) : selectedSkin;
+
+    const cardTargets = [
+      document.getElementById('char-card'),
+      document.getElementById('hero-tab-card')
+    ];
+
+    cardTargets.forEach(cardEl => {
+      if (!cardEl) return;
+
       // Remove todas as classes antigas que começam com skin-
       Array.from(cardEl.classList).forEach(cls => {
         if (cls.startsWith('skin-')) {
@@ -2366,12 +2478,22 @@ const App = {
         }
       });
 
-      // Mapeia o currentSkin/activeSkin
-      const selectedSkin = char.currentSkin || char.activeSkin || 'skin-default';
-      const skinObj = this.shopSkins.find(s => s.id === selectedSkin);
-      const skinClass = skinObj ? (skinObj.class || skinObj.id) : selectedSkin;
+      // Aplica a skin selecionada
       cardEl.classList.add(skinClass);
-    }
+
+      // Sincroniza classes visuais de equipamento (bordas, efeitos especiais)
+      const equipClasses = ['has-weapon', 'has-armor', 'equipped-oculos', 'equipped-catana', 'equipped-jaqueta', 'equipped-drone'];
+      const desktopCard = document.getElementById('char-card');
+      if (desktopCard && cardEl !== desktopCard) {
+        equipClasses.forEach(cls => {
+          if (desktopCard.classList.contains(cls)) {
+            cardEl.classList.add(cls);
+          } else {
+            cardEl.classList.remove(cls);
+          }
+        });
+      }
+    });
   },
 
   // Sincroniza dados da interface para a aba nativa "Herói" (Mobile Tab)
