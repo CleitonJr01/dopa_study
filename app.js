@@ -563,14 +563,19 @@ const App = {
       this.openNameModal(true);
     } else {
       this.spawnMonster();
+      // Verifica avisos globais no Supabase apenas para utilizadores antigos
+      this.checkAnnouncements();
     }
-
-    // Verifica avisos globais no Supabase
-    this.checkAnnouncements();
   },
 
   async checkAnnouncements() {
     if (typeof supabaseClient === 'undefined') return;
+
+    // Evita conflitos de overlay se o modal obrigatório de criação estiver ativo
+    const introModal = document.getElementById('intro-modal');
+    if (introModal && introModal.style.display !== 'none' && !this._isRenaming) {
+      return;
+    }
 
     try {
       const { data, error } = await supabaseClient
@@ -3300,6 +3305,9 @@ const App = {
 
       AudioSynth.playLevelUp();
       this.addLog(`✨ Bem-vindo, ${name}! Sua jornada de estudos gamificados começou!`, "victory");
+
+      // Dispara busca de avisos globais pós-inicialização do novo utilizador
+      this.checkAnnouncements();
     });
 
     // Modais
