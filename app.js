@@ -594,7 +594,8 @@ const App = {
 
       if (data && data.length > 0) {
         const latest = data[0];
-        const lastSeenId = localStorage.getItem('dopastudy_last_seen_announcement_id');
+        const userId = SupabaseAuth.currentUser ? SupabaseAuth.currentUser.id : 'anonymous';
+        const lastSeenId = localStorage.getItem(`dopastudy_last_seen_announcement_id_${userId}`);
 
         if (!lastSeenId || latest.id > parseInt(lastSeenId, 10)) {
           const badgeEl = document.getElementById('announcement-badge');
@@ -686,23 +687,89 @@ const App = {
     }, 1000);
   },
 
+  resetStateToDefault() {
+    this.state = {
+      character: {
+        name: '',
+        class: '',
+        level: 1,
+        xp: 0,
+        gold: 50,
+        foc: 10,
+        con: 10,
+        int: 10,
+        statPoints: 0,
+        activeTitle: 'Recruta do Saber',
+        activeTheme: 'default',
+        activeSkin: 'skin-default',
+        equipment: {
+          weapon: null,
+          armor: null,
+          accessory: null
+        }
+      },
+      unlockedEquipment: [],
+      focusCombo: 0,
+      quests: [],
+      customRewards: [],
+      unlockedTitles: ['Recruta do Saber'],
+      unlockedSkins: ['skin-default'],
+      unlockedThemes: ['default'],
+      activeBuffs: {
+        doubleXp: 0,
+        doubleDamage: 0
+      },
+      analytics: {
+        streak: 0,
+        totalFocusMinutes: 0,
+        monstersDefeated: 0,
+        rewardsClaimed: 0,
+        dailyFocusHistory: {}
+      },
+      lastResets: {
+        daily: '',
+        weekly: ''
+      },
+      customTimerDurations: {
+        focus: 25,
+        shortBreak: 5,
+        longBreak: 15
+      }
+    };
+  },
+
   // ============================================================
   // LOAD STATE — Híbrido: Cloud (Supabase) → LocalStorage fallback
   // ============================================================
   async loadState() {
     let parsed = null;
 
+    if (!SupabaseAuth.currentUser) {
+      console.warn('[loadState] Sem usuário logado para carregar dados.');
+      return;
+    }
+    const userId = SupabaseAuth.currentUser.id;
+
+    // Reset total do estado em memória com os valores default antes de carregar
+    this.resetStateToDefault();
+
     // 1. Tenta carregar do Supabase (source-of-truth na nuvem)
     const cloudData = await SupabaseAuth.loadProfile();
     if (cloudData) {
       parsed = cloudData;
-      // Atualiza cache local imediatamente
-      try { localStorage.setItem('dopastudy_save', JSON.stringify(parsed)); } catch (_) { }
+      // Atualiza cache local imediatamente com a chave do usuário
+      try {
+        localStorage.setItem(`dopastudy_state_${userId}`, JSON.stringify(parsed));
+      } catch (_) { }
     } else {
       // 2. Fallback: LocalStorage (modo offline ou novo herói)
-      const cached = localStorage.getItem('dopastudy_save');
+      const cached = localStorage.getItem(`dopastudy_state_${userId}`);
       if (cached) {
-        try { parsed = JSON.parse(cached); } catch (e) { console.error('Erro ao parsear save local', e); }
+        try {
+          parsed = JSON.parse(cached);
+        } catch (e) {
+          console.error('Erro ao parsear save local', e);
+        }
       }
     }
 
@@ -727,6 +794,13 @@ const App = {
         { id: 'r3', name: 'Episódio de Série', desc: 'Assistir a 1 episódio de série ou anime', cost: 100, isSystem: true },
         { id: 'r4', name: 'Jogar Videogame (30m)', desc: 'Desbloqueia 30 minutos de gameplay relaxante', cost: 150, isSystem: true }
       ];
+      this.state.unlockedTitles = ['Recruta do Saber'];
+      this.state.unlockedSkins = ['skin-default'];
+      this.state.unlockedThemes = ['default'];
+      this.state.activeBuffs = { doubleXp: 0, doubleDamage: 0 };
+      
+      // Salva no banco de dados imediatamente para criar o registro na nuvem
+      this.saveState();
     }
 
     // Higienização para retrocompatibilidade (saves antigos / campos novos)
@@ -927,16 +1001,16 @@ const App = {
     }
   },
 
-  // ============================================================
-  // SAVE STATE — Híbrido: LocalStorage instantâneo + Supabase cloud em background
-  //
-  // Design: fire-and-forget. Todos os 25+ call sites existentes (this.saveState())
-  // continuam funcionando sem nenhuma alteração, o gameplay não sofre nenhum lag.
-  // ============================================================
   saveState() {
+    if (!SupabaseAuth.currentUser) {
+      console.warn('[saveState] Sem usuário logado para persistir dados.');
+      return;
+    }
+    const userId = SupabaseAuth.currentUser.id;
+
     // 1. LocalStorage: salva IMEDIATAMENTE (zero latência para o gameplay)
     try {
-      localStorage.setItem('dopastudy_save', JSON.stringify(this.state));
+      localStorage.setItem(`dopastudy_state_${userId}`, JSON.stringify(this.state));
     } catch (e) {
       console.warn('[saveState] LocalStorage falhou:', e.message);
     }
@@ -3523,7 +3597,8 @@ const App = {
       btnCloseAnn.addEventListener('click', () => {
         const currentId = btnCloseAnn.dataset.announcementId;
         if (currentId) {
-          localStorage.setItem('dopastudy_last_seen_announcement_id', currentId);
+          const userId = SupabaseAuth.currentUser ? SupabaseAuth.currentUser.id : 'anonymous';
+          localStorage.setItem(`dopastudy_last_seen_announcement_id_${userId}`, currentId);
         }
         this.closeModal('announcement-modal');
       });
@@ -3671,16 +3746,38 @@ const App = {
 
   /** Reinicia o estado e volta à tela de login (após logout) */
   resetToAuthScreen() {
-    // Limpa cache local
-    localStorage.removeItem('dopastudy_save');
-    // Para qualquer timer ativo
-    if (this.timer && this.timer.intervalId) {
-      clearInterval(this.timer.intervalId);
-      this.timer.intervalId = null;
+    // Limpa cache genérico antigo
+    try {
+      localStorage.removeItem('dopastudy_save');
+    } catch (_) {}
+
+    // Limpa dados em memória para o estado default padrão
+    this.resetStateToDefault();
+
+    // Para temporizador de buffs
+    if (this._buffsIntervalId) {
+      clearInterval(this._buffsIntervalId);
+      this._buffsIntervalId = null;
     }
+
+    // Para qualquer timer Pomodoro ativo
+    if (this.timer) {
+      if (this.timer.intervalId) {
+        clearInterval(this.timer.intervalId);
+        this.timer.intervalId = null;
+      }
+      this.timer.mode = 'idle';
+      this.timer.timeLeft = 0;
+      this.timer.duration = 0;
+    }
+
+    // Reseta referências de usuário
+    SupabaseAuth.currentUser = null;
+
     // Oculta sidebar user info
     const bar = document.getElementById('user-info-bar');
     if (bar) bar.style.display = 'none';
+
     // Mostra tela de login
     this.showAuthScreen();
   },
